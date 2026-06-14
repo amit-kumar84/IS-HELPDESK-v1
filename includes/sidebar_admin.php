@@ -69,15 +69,15 @@ $grp_others  = ['UpdateMainPage','SanitizeReq','SvrBackupTime'];
     <div class="nav-section-title">Call / Ticket Register</div>
     <div class="nav-group <?= _ag($grp_tickets, $tab) ?>">
         <button class="nav-toggle" data-testid="nav-grp-tickets"><i class="fa-solid fa-ticket lead-ic"></i> Tickets
-            <span class="nav-badge"><?= $call_notification ?></span>
+            <?php if ($call_notification > 0): ?><span class="nav-badge"><?= $call_notification ?></span><?php endif; ?>
             <i class="fa-solid fa-chevron-right chev"></i>
         </button>
         <div class="nav-children">
             <a class="nav-link-item <?= _ac('CallGenerateByAdmin',$tab) ?>"   href="Admin_Home.php?AdminTab=CallGenerateByAdmin"><i class="fa-solid fa-plus lead-ic"></i> Generate Ticket</a>
             <a class="nav-link-item <?= _ac('All_Calls',$tab) ?>"              href="Admin_Home.php?AdminTab=All_Calls"><i class="fa-solid fa-list lead-ic"></i> Ticket Status</a>
-            <a class="nav-link-item <?= _ac('Pending_Calls',$tab) ?>"          href="Admin_Home.php?AdminTab=Pending_Calls"><i class="fa-solid fa-hourglass-half lead-ic"></i> Unassigned <span class="nav-badge"><?= $total_pending ?></span></a>
-            <a class="nav-link-item <?= _ac('Attend_Calls',$tab) ?>"           href="Admin_Home.php?AdminTab=Attend_Calls"><i class="fa-solid fa-spinner lead-ic"></i> Unresolved <span class="nav-badge"><?= $total_attend ?></span></a>
-            <a class="nav-link-item <?= _ac('Solved_Calls',$tab) ?>"           href="Admin_Home.php?AdminTab=Solved_Calls"><i class="fa-solid fa-circle-check lead-ic"></i> Solved <span class="nav-badge muted"><?= $total_solved ?></span></a>
+            <a class="nav-link-item <?= _ac('Pending_Calls',$tab) ?>"          href="Admin_Home.php?AdminTab=Pending_Calls"><i class="fa-solid fa-hourglass-half lead-ic"></i> Unassigned <?php if ($total_pending > 0): ?><span class="nav-badge"><?= $total_pending ?></span><?php endif; ?></a>
+            <a class="nav-link-item <?= _ac('Attend_Calls',$tab) ?>"           href="Admin_Home.php?AdminTab=Attend_Calls"><i class="fa-solid fa-spinner lead-ic"></i> Unresolved <?php if ($total_attend > 0): ?><span class="nav-badge"><?= $total_attend ?></span><?php endif; ?></a>
+            <a class="nav-link-item <?= _ac('Solved_Calls',$tab) ?>"           href="Admin_Home.php?AdminTab=Solved_Calls"><i class="fa-solid fa-circle-check lead-ic"></i> Solved <?php if ($total_solved > 0): ?><span class="nav-badge"><?= $total_solved ?></span><?php endif; ?></a>
             <a class="nav-link-item <?= _ac('Closed_Calls',$tab) ?>"           href="Admin_Home.php?AdminTab=Closed_Calls"><i class="fa-solid fa-lock lead-ic"></i> Closed</a>
             <a class="nav-link-item <?= _ac('AdminCallReport',$tab) ?>"        href="Admin_Home.php?AdminTab=AdminCallReport"><i class="fa-solid fa-chart-pie lead-ic"></i> Overall Status</a>
             <a class="nav-link-item <?= _ac('CallReport',$tab) ?>"             href="Admin_Home.php?AdminTab=CallReport"><i class="fa-solid fa-chart-line lead-ic"></i> Days-wise Report</a>
@@ -93,12 +93,12 @@ $grp_others  = ['UpdateMainPage','SanitizeReq','SvrBackupTime'];
     <div class="nav-section-title">Cartridge Register</div>
     <div class="nav-group <?= _ag($grp_cart, $tab) ?>">
         <button class="nav-toggle" data-testid="nav-grp-cartridges"><i class="fa-solid fa-print lead-ic"></i> Cartridges
-            <span class="nav-badge"><?= $total_cart ?></span>
+            <?php if ($total_cart > 0): ?><span class="nav-badge"><?= $total_cart ?></span><?php endif; ?>
             <i class="fa-solid fa-chevron-right chev"></i>
         </button>
         <div class="nav-children">
             <a class="nav-link-item <?= _ac('CartridgeReqGenerate',$tab) ?>"      href="Admin_Home.php?AdminTab=CartridgeReqGenerate"><i class="fa-solid fa-file-circle-plus lead-ic"></i> Cartridge Form</a>
-            <a class="nav-link-item <?= _ac('CartridgePendingRequest',$tab) ?>"   href="Admin_Home.php?AdminTab=CartridgePendingRequest"><i class="fa-solid fa-clock lead-ic"></i> Pending Req. <span class="nav-badge"><?= $total_cart ?></span></a>
+            <a class="nav-link-item <?= _ac('CartridgePendingRequest',$tab) ?>"   href="Admin_Home.php?AdminTab=CartridgePendingRequest"><i class="fa-solid fa-clock lead-ic"></i> Pending Req. <?php if ($total_cart > 0): ?><span class="nav-badge"><?= $total_cart ?></span><?php endif; ?></a>
             <a class="nav-link-item <?= _ac('CartridgeIssue',$tab) ?>"            href="Admin_Home.php?AdminTab=CartridgeIssue"><i class="fa-solid fa-receipt lead-ic"></i> Issue List</a>
             <a class="nav-link-item <?= _ac('CartridgeWiseIssue',$tab) ?>"        href="Admin_Home.php?AdminTab=CartridgeWiseIssue"><i class="fa-solid fa-filter lead-ic"></i> Cartridge-wise Issues</a>
             <a class="nav-link-item <?= _ac('CartridgeStock',$tab) ?>"            href="Admin_Home.php?AdminTab=CartridgeStock"><i class="fa-solid fa-boxes-stacked lead-ic"></i> Stock List</a>

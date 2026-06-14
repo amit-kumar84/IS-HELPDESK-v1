@@ -102,10 +102,19 @@ $hide_suggestion = $hide_suggestion ?? false;
                     <i class="fa-solid fa-circle lead" style="font-size:6px;margin-top:7px"></i>
                     <div>
                         <?php if ($n['is_new']): ?><span class="new-pill">NEW</span><?php endif; ?>
-                        <?php if (!empty($n['link']) && $n['link'] !== '#'): ?>
-                            <a href="<?= e($n['link']) ?>" target="_blank" rel="noopener"><?= e($n['title']) ?></a>
+                        <?php if (!empty($n['link'])): ?>
+                            <?php 
+                            $is_pdf = strpos($n['link'], 'forms/') === 0 || stripos($n['link'], '.pdf') !== false || stripos($n['link'], '.doc') !== false;
+                            $is_doc = stripos($n['link'], '.doc') !== false;
+                            $icon_class = $is_pdf ? ($is_doc ? 'fa-file-word' : 'fa-file-pdf') : 'fa-link';
+                            $icon_color = $is_pdf ? ($is_doc ? '#2563eb' : '#dc2626') : '#0284c7';
+                            ?>
+                            <a href="<?= e($n['link']) ?>" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;color:#1e40af;text-decoration:none;transition:all .3s ease;border-bottom:2px solid transparent;cursor:pointer;font-weight:500;padding:2px 4px;border-radius:4px">
+                                <i class="fa-solid <?= $icon_class ?>" style="font-size:12px;color:<?= $icon_color ?>;transition:.3s ease"></i>
+                                <?= e($n['title']) ?>
+                            </a>
                         <?php else: ?>
-                            <?= e($n['title']) ?>
+                            <span style="color:#334155;font-weight:500"><?= e($n['title']) ?></span>
                         <?php endif; ?>
                     </div>
                 </li>

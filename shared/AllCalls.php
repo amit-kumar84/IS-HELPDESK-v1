@@ -11,6 +11,9 @@ $isLocked  = in_array($lockedTab, ['Pending_Calls','Attend_Calls','Solved_Calls'
 
 $status_filter = $_GET['status'] ?? 'open';
 
+$isEngineer = current_role() === 'Engineer';
+$engineerName = $isEngineer ? ($_SESSION['user_name'] ?? '') : '';
+
 $counts = mysqli_fetch_assoc(mysqli_query($link, "SELECT
     COUNT(*) total,
     SUM(status='Pending') pending,
@@ -26,6 +29,11 @@ elseif  ($status_filter === 'solved')  $where = "status='Solved'";
 elseif  ($status_filter === 'closed')  $where = "status='Closed'";
 elseif  ($status_filter === 'open')    $where = "status IN ('Pending','Attend','Solved')";
 
+// Engineers can only see their own attended and solved tickets
+if ($isEngineer && in_array($status_filter, ['attend', 'solved'], true) && $engineerName !== '') {
+    $where .= " AND FIND_IN_SET(?, support_engg)";
+}
+
 $q = trim($_GET['q'] ?? '');
 $page = max(1, (int)($_GET['p'] ?? 1));
 $per = 50; $off = ($page - 1) * $per;
@@ -37,12 +45,22 @@ if ($q !== '') {
         ORDER BY substring(t_no,1,6) DESC, substring(t_no,8,12) DESC
         LIMIT ? OFFSET ?");
     $like = "%$q%";
-    mysqli_stmt_bind_param($stmt, 'sssssii', $like, $like, $like, $like, $like, $per, $off);
+    if ($isEngineer && in_array($status_filter, ['attend', 'solved'], true) && $engineerName !== '') {
+        mysqli_stmt_bind_param($stmt, 'sssssii', $engineerName, $like, $like, $like, $like, $like, $per, $off);
+    } else {
+        mysqli_stmt_bind_param($stmt, 'sssssii', $like, $like, $like, $like, $like, $per, $off);
+    }
     mysqli_stmt_execute($stmt);
     $rows = mysqli_stmt_get_result($stmt);
+    
     $cstmt = mysqli_prepare($link, "SELECT COUNT(*) FROM complain_register WHERE $where
         AND (t_no LIKE ? OR user_name LIKE ? OR Staff_no LIKE ? OR pc_no LIKE ? OR problem LIKE ?)");
-    mysqli_stmt_bind_param($cstmt, 'sssss', $like, $like, $like, $like, $like);
+    $like = "%$q%";
+    if ($isEngineer && in_array($status_filter, ['attend', 'solved'], true) && $engineerName !== '') {
+        mysqli_stmt_bind_param($cstmt, 'ssssss', $engineerName, $like, $like, $like, $like, $like);
+    } else {
+        mysqli_stmt_bind_param($cstmt, 'sssss', $like, $like, $like, $like, $like);
+    }
     mysqli_stmt_execute($cstmt);
     $totalFiltered = (int) mysqli_fetch_array(mysqli_stmt_get_result($cstmt))[0];
 } else {
@@ -50,10 +68,23 @@ if ($q !== '') {
         FROM complain_register WHERE $where
         ORDER BY substring(t_no,1,6) DESC, substring(t_no,8,12) DESC
         LIMIT ? OFFSET ?");
-    mysqli_stmt_bind_param($stmt, 'ii', $per, $off);
+    if ($isEngineer && in_array($status_filter, ['attend', 'solved'], true) && $engineerName !== '') {
+        mysqli_stmt_bind_param($stmt, 'sii', $engineerName, $per, $off);
+    } else {
+        mysqli_stmt_bind_param($stmt, 'ii', $per, $off);
+    }
     mysqli_stmt_execute($stmt);
     $rows = mysqli_stmt_get_result($stmt);
-    $totalFiltered = (int) mysqli_fetch_array(mysqli_query($link, "SELECT COUNT(*) FROM complain_register WHERE $where"))[0];
+    
+    $countQuery = "SELECT COUNT(*) FROM complain_register WHERE $where";
+    if ($isEngineer && in_array($status_filter, ['attend', 'solved'], true) && $engineerName !== '') {
+        $countStmt = mysqli_prepare($link, $countQuery);
+        mysqli_stmt_bind_param($countStmt, 's', $engineerName);
+        mysqli_stmt_execute($countStmt);
+        $totalFiltered = (int) mysqli_fetch_array(mysqli_stmt_get_result($countStmt))[0];
+    } else {
+        $totalFiltered = (int) mysqli_fetch_array(mysqli_query($link, $countQuery))[0];
+    }
 }
 $pages = max(1, (int) ceil($totalFiltered / $per));
 
@@ -152,7 +183,7 @@ if ($isAdmin) {
             <th>Ticket #</th><th style="width:46px">Photo</th><th>User</th><th>Dept (Sec)</th>
             <th>Phone</th><th>Asset</th><th>Printer</th><th>Category</th>
             <th>Problem</th><th>Engineer</th><th>Solution</th><th>Raised</th><th>Updated</th><th>Status</th>
-            <?php if ($canAct): ?><th style="min-width:200px;text-align:center">Action</th><?php endif; ?>
+            <?php if ($canAct): ?><th style="min-width:140px;text-align:center">Action</th><?php endif; ?>
         </tr></thead>
         <tbody>
         <?php while ($r = mysqli_fetch_assoc($rows)):
@@ -188,9 +219,9 @@ if ($isAdmin) {
                     </span>
                 </td>
                 <?php if ($canAct): ?>
-                <td style="min-width:200px;padding:8px !important">
+                <td style="min-width:140px;padding:8px !important">
                     <div style="display:flex;flex-direction:column;gap:6px">
-                        <?php if ($r['status'] === 'Pending'): ?>
+                        <?php if ($r['status'] === 'Pending' && !$isAdmin): ?>
                             <form method="post" action="includes/ticket_action.php" style="width:100%">
                                 <input type="hidden" name="t_no" value="<?= e($r['t_no']) ?>"><input type="hidden" name="action" value="attend">
                                 <button class="btn btn-xs btn-warning" title="Mark In Progress" data-testid="act-attend-<?= e($r['t_no']) ?>" style="width:100%"><i class="fa-solid fa-play"></i> Attend</button>
@@ -411,6 +442,86 @@ if ($isAdmin) {
     gap: 8px;
     justify-content: flex-end;
     margin-top: 14px;
+}
+
+/* ==============================
+   Responsive Table
+   ============================== */
+.table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+table {
+    font-size: 13px;
+}
+
+table th, table td {
+    padding: 10px 8px;
+    word-break: break-word;
+}
+
+/* Tablet and below */
+@media (max-width: 1200px) {
+    table th, table td {
+        padding: 8px 6px;
+        font-size: 12px;
+    }
+    
+    /* Hide less important columns */
+    th:nth-child(5), /* Dept */
+    th:nth-child(6), /* Phone */
+    th:nth-child(7), /* Asset */
+    th:nth-child(8), /* Printer */
+    th:nth-child(9), /* Category */
+    th:nth-child(12), /* Solution */
+    th:nth-child(13), /* Raised */
+    td:nth-child(5),
+    td:nth-child(6),
+    td:nth-child(7),
+    td:nth-child(8),
+    td:nth-child(9),
+    td:nth-child(12),
+    td:nth-child(13) {
+        display: none;
+    }
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+    table th, table td {
+        padding: 6px 4px;
+        font-size: 11px;
+    }
+    
+    /* Hide more columns on mobile */
+    th:nth-child(3), /* Photo */
+    th:nth-child(5), /* Dept */
+    th:nth-child(6), /* Phone */
+    th:nth-child(7), /* Asset */
+    th:nth-child(8), /* Printer */
+    th:nth-child(9), /* Category */
+    th:nth-child(11), /* Engineer */
+    th:nth-child(12), /* Solution */
+    th:nth-child(13), /* Raised */
+    th:nth-child(14), /* Updated */
+    td:nth-child(3),
+    td:nth-child(5),
+    td:nth-child(6),
+    td:nth-child(7),
+    td:nth-child(8),
+    td:nth-child(9),
+    td:nth-child(11),
+    td:nth-child(12),
+    td:nth-child(13),
+    td:nth-child(14) {
+        display: none;
+    }
+    
+    .btn.btn-xs {
+        padding: 4px 8px;
+        font-size: 10px;
+    }
 }
 </style>
 

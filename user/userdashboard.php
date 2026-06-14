@@ -54,10 +54,11 @@ $printers = hw($link, $sid, 'PRINTER');
         <div style="position:relative;display:inline-block;margin-bottom:10px">
             <?php
             $img = user_photo($sid);
+            $defaultAvatar = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Cdefs%3E%3ClinearGradient id=%22bg%22 x1=%220%25%22 y1=%220%25%22 x2=%22100%25%22 y2=%22100%25%22%3E%3Cstop offset=%220%25%22 style=%22stop-color:%230891b2;stop-opacity:1%22 /%3E%3Cstop offset=%22100%25%22 style=%22stop-color:%2306b6d4;stop-opacity:1%22 /%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22url(%23bg)%22 /%3E%3Ccircle cx=%2250%22 cy=%2240%22 r=%2218%22 fill=%22%23fff%22 /%3E%3Cpath d=%22M 25 65 Q 25 55 50 55 Q 75 55 75 65 L 75 85 Q 75 90 70 90 L 30 90 Q 25 90 25 85 Z%22 fill=%22%23fff%22 /%3E%3C/svg%3E';
             if ($img) {
                 echo '<img src="' . e($img) . '" style="width:140px;height:160px;border-radius:14px;border:3px solid #dbeafe;object-fit:cover">';
             } else {
-                echo '<div style="width:140px;height:160px;border-radius:14px;background:linear-gradient(135deg,#0a1f44,#1e3a8a);display:flex;align-items:center;justify-content:center;color:#fff;font-size:48px;font-weight:700;margin:0 auto">' . e(initials($emp['username'] ?? 'U')) . '</div>';
+                echo '<img src="' . $defaultAvatar . '" style="width:140px;height:160px;border-radius:14px;border:3px solid #dbeafe;object-fit:cover">';
             }
             ?>
         </div>

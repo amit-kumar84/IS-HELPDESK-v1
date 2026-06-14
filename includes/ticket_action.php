@@ -79,6 +79,21 @@ switch ($action) {
         break;
 
     case 'solve':
+        // For non-admin engineers, check if they are assigned to this ticket
+        if (!$is_admin) {
+            $check_stmt = mysqli_prepare($link, "SELECT support_engg FROM complain_register WHERE t_no=?");
+            mysqli_stmt_bind_param($check_stmt, 's', $primary_t_no);
+            mysqli_stmt_execute($check_stmt);
+            $check_result = mysqli_stmt_get_result($check_stmt);
+            $check_row = mysqli_fetch_assoc($check_result);
+            
+            if (!$check_row || !($check_row['support_engg'] !== '' && strpos($check_row['support_engg'], $actor) !== false)) {
+                flash_set('danger', 'You can only solve tickets assigned to you.');
+                header('Location: ' . $return);
+                exit;
+            }
+        }
+        
         $stmt = mysqli_prepare($link, "UPDATE complain_register
             SET status='Solved', solution=?, support_engg=COALESCE(NULLIF(support_engg,''), ?), s_DateTime=?
             WHERE t_no=? AND status IN ('Pending','Attend')");
@@ -91,6 +106,21 @@ switch ($action) {
         break;
 
     case 'close':
+        // For non-admin engineers, check if they are assigned to this ticket
+        if (!$is_admin) {
+            $check_stmt = mysqli_prepare($link, "SELECT support_engg FROM complain_register WHERE t_no=?");
+            mysqli_stmt_bind_param($check_stmt, 's', $primary_t_no);
+            mysqli_stmt_execute($check_stmt);
+            $check_result = mysqli_stmt_get_result($check_stmt);
+            $check_row = mysqli_fetch_assoc($check_result);
+            
+            if (!$check_row || !($check_row['support_engg'] !== '' && strpos($check_row['support_engg'], $actor) !== false)) {
+                flash_set('danger', 'You can only close tickets assigned to you.');
+                header('Location: ' . $return);
+                exit;
+            }
+        }
+        
         $stmt = mysqli_prepare($link, "UPDATE complain_register
             SET status='Closed',
                 s_DateTime = IF(s_DateTime IS NULL OR s_DateTime='', ?, s_DateTime)
