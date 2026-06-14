@@ -70,6 +70,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             else                           $flash['err'] = mysqli_error($link);
         }
     }
+    elseif ($action === 'change_id') {
+        $old = trim($_POST['adminid'] ?? '');
+        $new = trim($_POST['new_adminid'] ?? '');
+        if ($old === '' || $new === '') {
+            $flash['err'] = 'Old and new admin IDs are both required.';
+        } elseif (strtolower($old) === strtolower($new)) {
+            $flash['err'] = 'The new Admin ID must be different from the old one.';
+        } else {
+            // Check uniqueness of new ID
+            $chk = mysqli_prepare($link, "SELECT 1 FROM iskotadmin_login WHERE adminid = ? LIMIT 1");
+            mysqli_stmt_bind_param($chk, 's', $new);
+            mysqli_stmt_execute($chk);
+            $taken = (bool) mysqli_fetch_row(mysqli_stmt_get_result($chk));
+            if ($taken) {
+                $flash['err'] = "An admin with ID '$new' already exists.";
+            } else {
+                $wasSuper = (strtolower($old) === SUPER_ADMIN_ID());
+                // Update DB
+                $upd = mysqli_prepare($link, "UPDATE iskotadmin_login SET adminid = ? WHERE adminid = ?");
+                mysqli_stmt_bind_param($upd, 'ss', $new, $old);
+                if (mysqli_stmt_execute($upd) && mysqli_stmt_affected_rows($upd) > 0) {
+                    // If the changed account was the Super Admin, persist the new id to disk
+                    if ($wasSuper) {
+                        $path = __DIR__ . '/../memory/super_admin_id';
+                        $okwrite = @file_put_contents($path, strtolower($new));
+                        if ($okwrite === false) {
+                            // Attempt to revert DB change
+                            $rev = mysqli_prepare($link, "UPDATE iskotadmin_login SET adminid = ? WHERE adminid = ?");
+                            mysqli_stmt_bind_param($rev, 'ss', $old, $new);
+                            mysqli_stmt_execute($rev);
+                            $flash['err'] = "Failed to persist Super Admin ID to disk. Change reverted.";
+                        } else {
+                            // Update session if the current user was the one renamed
+                            if (isset($_SESSION) && (strtolower(current_user_id()) === strtolower($old))) {
+                                $_SESSION['sid'] = $new;
+                            }
+                            $flash['ok'] = "Super Admin ID changed from '$old' to '$new'.";
+                        }
+                    } else {
+                        $flash['ok'] = "Admin ID changed from '$old' to '$new'.";
+                    }
+                } else {
+                    $flash['err'] = mysqli_error($link);
+                }
+            }
+        }
+    }
     elseif ($action === 'remove') {
         $id = trim($_POST['adminid'] ?? '');
         if (strtolower($id) === SUPER_ADMIN_ID()) {
@@ -158,6 +205,15 @@ $total = count($admins);
                         <input type="hidden" name="adminid" value="<?= e($a['adminid']) ?>">
                         <input type="text" name="adminpass" placeholder="New password" required data-testid="ma-pwd-<?= e($a['adminid']) ?>">
                         <button class="btn btn-warn" type="submit" data-testid="ma-pwd-submit-<?= e($a['adminid']) ?>"><i class="fa-solid fa-check"></i> Save</button>
+                    </form>
+                </details>
+                <details class="ma-tool">
+                    <summary><i class="fa-solid fa-id-badge"></i> Change ID</summary>
+                    <form method="post" autocomplete="off">
+                        <input type="hidden" name="action" value="change_id">
+                        <input type="hidden" name="adminid" value="<?= e($a['adminid']) ?>">
+                        <input type="text" name="new_adminid" placeholder="New Admin ID" required data-testid="ma-changeid-<?= e($a['adminid']) ?>">
+                        <button class="btn btn-primary" type="submit"><i class="fa-solid fa-check"></i> Save</button>
                     </form>
                 </details>
                 <details class="ma-tool">

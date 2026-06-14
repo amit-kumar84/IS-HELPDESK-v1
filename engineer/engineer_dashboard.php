@@ -2,8 +2,8 @@
 /** Engineer dashboard widget */
 require_once 'includes/photo.php';
 
-// Floating Live Helpdesk Banner (top of dashboard)
-include 'includes/floating_banner.php';
+
+
 
 $counts = [
     'pending'   => (int) mysqli_fetch_array(mysqli_query($link, "SELECT COUNT(*) FROM complain_register WHERE status='Pending'"))[0],

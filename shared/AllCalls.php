@@ -63,11 +63,25 @@ $base = $panel ? 'Admin_Home.php?AdminTab=' . urlencode($panel) : 'Engineer_home
 $canAct   = in_array(current_role(), ['ISKotAdmin','Admin','Engineer'], true);
 $isAdmin  = in_array(current_role(), ['ISKotAdmin','Admin'], true);
 
+/**
+ * Render comma-separated engineer names as styled badge chips.
+ */
+function render_engg_badges(string $names): string {
+    $parts = explode(',', $names);
+    $out = '<div class="eng-badges">';
+    foreach ($parts as $p) {
+        $p = trim($p);
+        if ($p === '') continue;
+        $out .= '<span class="eng-badge">' . e($p) . '</span>';
+    }
+    return $out . '</div>';
+}
+
 // Pre-load engineer list once for the Assign-To dropdown (admin only)
 $engineers_list = [];
 if ($isAdmin) {
-    $eq = mysqli_query($link, "SELECT engg_name FROM s_engg_login WHERE status=0 ORDER BY engg_name ASC");
-    while ($eq && ($er = mysqli_fetch_assoc($eq))) $engineers_list[] = $er['engg_name'];
+    $eq = mysqli_query($link, "SELECT engg_name, support_field FROM s_engg_login WHERE status=0 ORDER BY engg_name ASC");
+    while ($eq && ($er = mysqli_fetch_assoc($eq))) $engineers_list[] = $er;
 }
 ?>
 
@@ -138,7 +152,7 @@ if ($isAdmin) {
             <th>Ticket #</th><th style="width:46px">Photo</th><th>User</th><th>Dept (Sec)</th>
             <th>Phone</th><th>Asset</th><th>Printer</th><th>Category</th>
             <th>Problem</th><th>Engineer</th><th>Solution</th><th>Raised</th><th>Updated</th><th>Status</th>
-            <?php if ($canAct): ?><th style="text-align:right;min-width:140px">Action</th><?php endif; ?>
+            <?php if ($canAct): ?><th style="min-width:200px;text-align:center">Action</th><?php endif; ?>
         </tr></thead>
         <tbody>
         <?php while ($r = mysqli_fetch_assoc($rows)):
@@ -160,93 +174,284 @@ if ($isAdmin) {
                 <td><?= e($r['printer']) ?></td>
                 <td><?= e($r['problem_type']) ?></td>
                 <td style="max-width:340px;min-width:240px;font-size:12.5px;font-weight:500;color:#0a1f44;white-space:normal;word-break:break-word;line-height:1.4"><?= e($r['problem']) ?></td>
-                <td><?= e($r['support_engg']) ?></td>
+                <td><?= e($r['support_engg']) ? render_engg_badges($r['support_engg']) : '<span style="color:#94a3b8;font-size:12px">—</span>' ?></td>
                 <td style="max-width:180px;font-size:12px"><?= e($r['solution']) ?></td>
                 <td style="white-space:nowrap;font-variant-numeric:tabular-nums;font-size:11px"><?= e($r['r_DateTime']) ?></td>
                 <td style="white-space:nowrap;font-variant-numeric:tabular-nums;font-size:11px"><?= e($r['s_DateTime']) ?></td>
-                <td><span class="badge <?= $cls ?>"><?= e($r['status']) ?></span></td>
+                <td>
+                    <span class="status-badge status-<?= $cls ?>" title="<?= e($r['status']) ?>">
+                        <?php if ($cls === 'pending'): ?><i class="fa-solid fa-hourglass-half"></i><?php endif; ?>
+                        <?php if ($cls === 'attend'): ?><i class="fa-solid fa-spinner"></i><?php endif; ?>
+                        <?php if ($cls === 'solved'): ?><i class="fa-solid fa-check-circle"></i><?php endif; ?>
+                        <?php if ($cls === 'closed'): ?><i class="fa-solid fa-lock"></i><?php endif; ?>
+                        <?= e($r['status']) ?>
+                    </span>
+                </td>
                 <?php if ($canAct): ?>
-                <td style="text-align:right;white-space:nowrap">
-                    <?php if ($r['status'] === 'Pending'): ?>
-                        <form method="post" action="includes/ticket_action.php" style="display:inline">
-                            <input type="hidden" name="t_no" value="<?= e($r['t_no']) ?>"><input type="hidden" name="action" value="attend">
-                            <button class="btn btn-xs btn-warning" title="Mark In Progress" data-testid="act-attend-<?= e($r['t_no']) ?>"><i class="fa-solid fa-play"></i> Attend</button>
-                        </form>
-                    <?php endif; ?>
-                    <?php if (in_array($r['status'], ['Pending','Attend'])): ?>
-                        <button class="btn btn-xs btn-success" title="Mark Solved" onclick="solveTicket('<?= e($r['t_no']) ?>')" data-testid="act-solve-<?= e($r['t_no']) ?>"><i class="fa-solid fa-check"></i> Solve</button>
-                    <?php endif; ?>
-                    <?php if (in_array($r['status'], ['Pending','Attend'])): ?>
-                        <form method="post" action="includes/ticket_action.php" style="display:inline" onsubmit="return confirm('Close ticket <?= e($r['t_no']) ?>?')">
-                            <input type="hidden" name="t_no" value="<?= e($r['t_no']) ?>"><input type="hidden" name="action" value="close">
-                            <button class="btn btn-xs btn-navy" title="Close ticket" data-testid="act-close-<?= e($r['t_no']) ?>"><i class="fa-solid fa-lock"></i> Close</button>
-                        </form>
-                    <?php endif; ?>
-                    <?php if ($r['status'] === 'Closed'): ?>
-                        <form method="post" action="includes/ticket_action.php" style="display:inline" onsubmit="return confirm('Re-open <?= e($r['t_no']) ?>?')">
-                            <input type="hidden" name="t_no" value="<?= e($r['t_no']) ?>"><input type="hidden" name="action" value="reopen">
-                            <button class="btn btn-xs btn-secondary" title="Re-open"><i class="fa-solid fa-rotate-left"></i> Re-open</button>
-                        </form>
-                    <?php endif; ?>
+                <td style="min-width:200px;padding:8px !important">
+                    <div style="display:flex;flex-direction:column;gap:6px">
+                        <?php if ($r['status'] === 'Pending'): ?>
+                            <form method="post" action="includes/ticket_action.php" style="width:100%">
+                                <input type="hidden" name="t_no" value="<?= e($r['t_no']) ?>"><input type="hidden" name="action" value="attend">
+                                <button class="btn btn-xs btn-warning" title="Mark In Progress" data-testid="act-attend-<?= e($r['t_no']) ?>" style="width:100%"><i class="fa-solid fa-play"></i> Attend</button>
+                            </form>
+                        <?php endif; ?>
+                        <?php if ($r['status'] === 'Attend'): ?>
+                            <button class="btn btn-xs btn-success" title="Mark Solved" onclick="solveTicket('<?= e($r['t_no']) ?>')" data-testid="act-solve-<?= e($r['t_no']) ?>" style="width:100%"><i class="fa-solid fa-check"></i> Solve</button>
+                        <?php endif; ?>
+                        <?php if ($r['status'] === 'Solved'): ?>
+                            <form method="post" action="includes/ticket_action.php" style="width:100%" onsubmit="return confirm('Close ticket <?= e($r['t_no']) ?>?')">
+                                <input type="hidden" name="t_no" value="<?= e($r['t_no']) ?>"><input type="hidden" name="action" value="close">
+                                <button class="btn btn-xs btn-navy" title="Close ticket" data-testid="act-close-<?= e($r['t_no']) ?>" style="width:100%"><i class="fa-solid fa-lock"></i> Close</button>
+                            </form>
+                        <?php endif; ?>
+                        <?php if ($r['status'] === 'Closed'): ?>
+                            <form method="post" action="includes/ticket_action.php" style="width:100%" onsubmit="return confirm('Re-open <?= e($r['t_no']) ?>?')">
+                                <input type="hidden" name="t_no" value="<?= e($r['t_no']) ?>"><input type="hidden" name="action" value="reopen">
+                                <button class="btn btn-xs btn-secondary" title="Re-open" style="width:100%"><i class="fa-solid fa-rotate-left"></i> Re-open</button>
+                            </form>
+                        <?php endif; ?>
 
-                    <?php if ($isAdmin): ?>
-                        <!-- Admin-only: Assign/reassign engineer -->
-                        <?php $disabled = in_array($r['status'], ['Solved','Closed'], true); ?>
-                        <button type="button" class="btn btn-xs <?= $disabled ? 'btn-secondary' : 'btn-accent' ?>" title="Assign/reassign engineer" <?= $disabled ? 'disabled style="cursor:not-allowed;opacity:.65"' : '' ?>
-                            data-assign-tno="<?= e($r['t_no']) ?>"
-                            data-assign-engg="<?= e($r['support_engg']) ?>"
-                            data-assign-status="<?= e($r['status']) ?>"
-                            data-testid="act-admin-<?= e($r['t_no']) ?>">
-                            <i class="fa-solid fa-user-tie"></i> Assign / Reassign
-                        </button>
-                    <?php endif; ?>
+                        <?php if ($isAdmin): ?>
+                            <!-- Admin-only: Assign/reassign engineer (pending tickets only) -->
+                            <?php if ($r['status'] === 'Pending'): ?>
+                                <button type="button" class="btn btn-xs btn-accent" title="Assign/reassign engineer"
+                                    data-assign-tno="<?= e($r['t_no']) ?>"
+                                    data-assign-engg="<?= e($r['support_engg']) ?>"
+                                    data-assign-status="<?= e($r['status']) ?>"
+                                    data-testid="act-admin-<?= e($r['t_no']) ?>"
+                                    style="width:100%">
+                                    <i class="fa-solid fa-user-tie"></i> Assign
+                                </button>
+                            <?php endif; ?>
+                        <?php endif; ?>
+                    </div>
                 </td>
                 <?php endif; ?>
             </tr>
         <?php endwhile; ?>
         <?php if (mysqli_num_rows($rows) === 0): ?>
-            <tr><td colspan="<?= $canAct ? 15 : 14 ?>" style="text-align:center;padding:30px;color:var(--c-text-2)">No tickets match the filter.</td></tr>
+            <tr><td colspan="<?= $canAct ? 16 : 15 ?>" style="text-align:center;padding:30px;color:var(--c-text-2)">No tickets match the filter.</td></tr>
         <?php endif; ?>
         </tbody>
     </table>
 </div>
 
-<?php if ($pages > 1): ?>
-<div class="flex" style="justify-content:center;gap:6px;margin-top:8px;flex-wrap:wrap">
-    <?php
-    $purl = $base . '&status=' . urlencode($status_filter) . ($q !== '' ? '&q=' . urlencode($q) : '');
-    for ($i = max(1, $page - 3); $i <= min($pages, $page + 3); $i++):
-    ?>
-        <a class="btn btn-sm <?= $i === $page ? '' : 'btn-secondary' ?>" href="<?= $purl ?>&p=<?= $i ?>"><?= $i ?></a>
-    <?php endfor; ?>
-    <span class="text-muted" style="font-size:11.5px;margin-left:8px">Page <?= $page ?> / <?= $pages ?> · <?= number_format($totalFiltered) ?> records</span>
-</div>
-<?php endif; ?>
+<style>
+/* ==============================
+   Engineer name badges
+   ============================== */
+.eng-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.eng-badge {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #0a1f44;
+    background: #e0e7ff;
+    border: 1px solid #c7d2fe;
+    white-space: nowrap;
+    line-height: 1.5;
+}
 
-<!-- Solve modal -->
-<div id="solveModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,.55);z-index:50;align-items:center;justify-content:center">
-    <div style="background:#fff;border-radius:12px;width:100%;max-width:500px;padding:22px;box-shadow:0 24px 64px -16px rgba(0,0,0,.4)">
-        <h3 style="margin:0 0 4px;color:#0a1f44;font-size:17px">Mark Ticket as Solved</h3>
-        <p style="margin:0 0 14px;color:#475569;font-size:12.5px">Provide the resolution / solution for ticket <b id="modalTno"></b>.</p>
+/* ==============================
+   Status badges
+   ============================== */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px -4px rgba(0,0,0,0.2);
+    transition: all 0.2s ease;
+}
+.status-badge:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px -4px rgba(0,0,0,0.3);
+}
+
+.status-pending {
+    background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+    color: #78350f;
+    border: 1px solid rgba(217, 119, 6, 0.3);
+    animation: pulse-pending 2s infinite;
+}
+@keyframes pulse-pending {
+    0%, 100% { box-shadow: 0 4px 12px -4px rgba(245, 158, 11, 0.4); }
+    50% { box-shadow: 0 8px 20px -4px rgba(245, 158, 11, 0.6); }
+}
+
+.status-attend {
+    background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%);
+    color: #fff;
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    animation: spin-attend 3s linear infinite;
+}
+@keyframes spin-attend {
+    0% { filter: drop-shadow(0 0 0px rgba(139, 92, 246, 0.5)); }
+    50% { filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.8)); }
+    100% { filter: drop-shadow(0 0 0px rgba(139, 92, 246, 0.5)); }
+}
+
+.status-solved {
+    background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+    color: #fff;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    animation: glow-solved 2s ease-in-out infinite;
+}
+@keyframes glow-solved {
+    0%, 100% { box-shadow: 0 4px 12px -4px rgba(16, 185, 129, 0.4); }
+    50% { box-shadow: 0 6px 16px -2px rgba(16, 185, 129, 0.6); }
+}
+
+.status-closed {
+    background: linear-gradient(135deg, #6b7280 0%, #9ca3af 100%);
+    color: #fff;
+    border: 1px solid rgba(107, 114, 128, 0.3);
+}
+
+/* ==============================
+   Solve Modal
+   ============================== */
+#solveModal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15,23,42,.55);
+    z-index: 60;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+#solveModal .smodal-inner {
+    background: #fff;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 520px;
+    padding: 24px 26px;
+    box-shadow: 0 30px 70px -18px rgba(15,23,42,.5);
+    position: relative;
+    overflow: hidden;
+}
+#solveModal .smodal-inner .smodal-accent {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    background: linear-gradient(180deg,#10b981,#34d399);
+}
+#solveModal .smodal-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+#solveModal .smodal-header .smodal-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 11px;
+    background: linear-gradient(135deg,#059669,#10b981);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+}
+#solveModal .smodal-header h3 {
+    margin: 0;
+    color: #0a1f44;
+    font-size: 17px;
+    font-weight: 800;
+}
+#solveModal .smodal-header h3 b {
+    color: #059669;
+}
+#solveModal .smodal-header .smodal-close {
+    margin-left: auto;
+    background: #f1f5f9;
+    border: 0;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    color: #0a1f44;
+    font-size: 14px;
+    cursor: pointer;
+}
+#solveModal .smodal-body textarea {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1.5px solid #d1d5db;
+    border-radius: 10px;
+    background: #f9fafb;
+    font-size: 13.5px;
+    resize: vertical;
+    min-height: 100px;
+    font-family: inherit;
+    line-height: 1.5;
+    transition: border-color .15s;
+    box-sizing: border-box;
+}
+#solveModal .smodal-body textarea:focus {
+    outline: none;
+    border-color: #10b981;
+    background: #fff;
+}
+#solveModal .smodal-footer {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 14px;
+}
+</style>
+
+<!-- Solve Modal -->
+<div id="solveModal">
+    <div class="smodal-inner">
+        <div class="smodal-accent"></div>
         <form method="post" action="includes/ticket_action.php">
-            <input type="hidden" name="t_no" id="modalTnoInput">
             <input type="hidden" name="action" value="solve">
-            <textarea name="solution" rows="4" placeholder="Describe how the issue was resolved…" required minlength="5"></textarea>
-            <div class="flex-end mt-3">
-                <button type="button" class="btn btn-secondary" onclick="document.getElementById('solveModal').style.display='none'">Cancel</button>
-                <button type="submit" class="btn btn-success"><i class="fa-solid fa-check"></i> Mark Solved</button>
+            <input type="hidden" name="t_no" id="solveTnoInput" value="">
+            <div class="smodal-header">
+                <div class="smodal-icon"><i class="fa-solid fa-check"></i></div>
+                <div>
+                    <h3>Mark Solved — Ticket <b id="solveTnoLabel"></b></h3>
+                    <p style="margin:3px 0 0;color:#475569;font-size:12px">Describe the solution applied to resolve this ticket.</p>
+                </div>
+                <button type="button" class="smodal-close" onclick="closeSolveModal()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="smodal-body">
+                <textarea name="solution" placeholder="Describe what was done to resolve the issue…" required></textarea>
+            </div>
+            <div class="smodal-footer">
+                <button type="button" class="btn btn-sm btn-secondary" onclick="closeSolveModal()">Cancel</button>
+                <button type="submit" class="btn btn-sm btn-success"><i class="fa-solid fa-check-circle"></i> Mark Solved</button>
             </div>
         </form>
     </div>
 </div>
+
 <script>
-function solveTicket(t){
-    document.getElementById('modalTno').textContent = t;
-    document.getElementById('modalTnoInput').value = t;
+function solveTicket(t) {
+    document.getElementById('solveTnoLabel').textContent = t;
+    document.getElementById('solveTnoInput').value = t;
     document.getElementById('solveModal').style.display = 'flex';
 }
+function closeSolveModal() {
+    document.getElementById('solveModal').style.display = 'none';
+}
+
 <?php if ($isAdmin): ?>
-function openAssign(ticketIds, currentEngg, currentStatus){
+function openAssign(ticketIds, currentEnggStr){
     var ids = Array.isArray(ticketIds) ? ticketIds : [ticketIds];
     var selectedText = ids.length === 1 ? ids[0] : ids.length + ' tickets';
     document.getElementById('admModalTno').textContent = selectedText;
@@ -260,22 +465,33 @@ function openAssign(ticketIds, currentEngg, currentStatus){
         input.value = id;
         ticketInputs.appendChild(input);
     });
-    var sel = document.getElementById('admAssignee');
-    if (sel) for (var i=0; i<sel.options.length; i++) sel.options[i].selected = (sel.options[i].value === (currentEngg||''));
-    var stat = document.getElementById('admNewStatus');
-    if (stat) for (var j=0; j<stat.options.length; j++) stat.options[j].selected = (stat.options[j].value === (currentStatus||''));
-    var statusInputs = document.getElementById('admStatusTicketInputs');
-    statusInputs.innerHTML = '';
-    ids.forEach(function(id){
-        var input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = 't_no[]';
-        input.value = id;
-        statusInputs.appendChild(input);
+    // Pre-check engineers that are currently assigned (comma-separated)
+    var currentEnggs = (currentEnggStr || '').split(',').map(function(e){ return e.trim(); }).filter(function(e){ return e !== ''; });
+    var chk = document.querySelectorAll('.adm-engg-checkbox');
+    chk.forEach(function(c){
+        c.checked = currentEnggs.indexOf(c.value) !== -1;
     });
+    document.getElementById('admEnggMsg').textContent = '';
     document.getElementById('adminModal').style.display = 'flex';
 }
 function closeAdminModal(){ document.getElementById('adminModal').style.display = 'none'; }
+
+function validateAssignSelection(){
+    var checked = document.querySelectorAll('.adm-engg-checkbox:checked');
+    var count = checked.length;
+    var msgEl = document.getElementById('admEnggMsg');
+    if (count < 1) {
+        msgEl.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Select at least 1 engineer.';
+        return false;
+    }
+    if (count > 5) {
+        msgEl.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Maximum 5 engineers allowed.';
+        return false;
+    }
+    msgEl.textContent = '';
+    return true;
+}
+
 (function(){
     var checkboxes = Array.from(document.querySelectorAll('.ticket-checkbox'));
     var selectAll = document.getElementById('selectAllTickets');
@@ -303,55 +519,75 @@ function closeAdminModal(){ document.getElementById('adminModal').style.display 
     assignBtn && assignBtn.addEventListener('click', function(){
         var selected = checkboxes.filter(function(ch){ return ch.checked && !ch.disabled; }).map(function(ch){ return ch.value; });
         if (selected.length === 0) return;
-        openAssign(selected, '', '');
+        openAssign(selected, '');
     });
 
     document.querySelectorAll('[data-assign-tno]').forEach(function(btn){
         if (btn.disabled) return;
         btn.addEventListener('click', function(){
-            openAssign(btn.dataset.assignTno, btn.dataset.assignEngg, btn.dataset.assignStatus);
+            openAssign(btn.dataset.assignTno, btn.dataset.assignEngg);
         });
+    });
+
+    // Limit engineer checkboxes to max 5
+    document.querySelector('.adm-engg-list') && document.querySelector('.adm-engg-list').addEventListener('change', function(e){
+        if (e.target.classList.contains('adm-engg-checkbox')) {
+            var checked = document.querySelectorAll('.adm-engg-checkbox:checked');
+            var msgEl = document.getElementById('admEnggMsg');
+            if (checked.length > 5) {
+                e.target.checked = false;
+                msgEl.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Maximum 5 engineers allowed.';
+            } else {
+                msgEl.textContent = '';
+            }
+        }
     });
 })();
 <?php endif; ?>
 </script>
 
 <?php if ($isAdmin): ?>
-<!-- Admin Tools modal — Assign Engineer + Update Status (+ optional solution) -->
+<!-- Admin Tools modal — Assign Engineer checkboxes (1-5) + Update Status -->
 <div id="adminModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:60;align-items:center;justify-content:center;padding:20px">
-    <div style="background:#fff;border-radius:16px;width:100%;max-width:560px;padding:24px 26px;box-shadow:0 30px 70px -18px rgba(15,23,42,.5);position:relative;overflow:hidden">
+    <div style="background:#fff;border-radius:16px;width:100%;max-width:760px;padding:24px 26px;box-shadow:0 30px 70px -18px rgba(15,23,42,.5);position:relative;overflow:hidden">
         <div style="position:absolute;left:0;top:0;bottom:0;width:6px;background:linear-gradient(180deg,#FF9933 0% 33%, #fff 33% 66%, #138808 66% 100%)"></div>
 
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
             <div style="width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#1d4ed8,#0a1f44);color:#fff;display:flex;align-items:center;justify-content:center"><i class="fa-solid fa-user-gear"></i></div>
             <div>
                 <h3 style="margin:0;color:#0a1f44;font-size:17px;font-weight:800">Admin Tools — Ticket <b id="admModalTno" style="color:#1d4ed8"></b></h3>
-                <p style="margin:3px 0 0;color:#475569;font-size:12px">Re-assign to engineer and / or change the status — both actions in one place.</p>
+                <p style="margin:3px 0 0;color:#475569;font-size:12px">Assign 1–5 engineers to the selected ticket(s).</p>
             </div>
             <button type="button" onclick="closeAdminModal()" style="margin-left:auto;background:#f1f5f9;border:0;width:34px;height:34px;border-radius:8px;color:#0a1f44;font-size:14px;cursor:pointer"><i class="fa-solid fa-xmark"></i></button>
         </div>
 
-        <!-- Assign engineer form -->
-        <form method="post" action="includes/ticket_action.php" style="margin:14px 0 18px;padding:14px 16px;background:linear-gradient(135deg,#eff6ff,#f0fdfa);border:1px solid #bfdbfe;border-radius:11px">
+        <!-- Assign engineer form — checkboxes -->
+        <form method="post" action="includes/ticket_action.php" onsubmit="return validateAssignSelection()" style="margin:14px 0 18px;padding:14px 16px;background:linear-gradient(135deg,#eff6ff,#f0fdfa);border:1px solid #bfdbfe;border-radius:11px">
             <input type="hidden" name="action" value="assign">
             <div id="admSelectedTickets" style="margin-bottom:10px;font-size:13px;color:#0f172a"></div>
             <div id="admTicketInputs"></div>
             <label style="display:block;font-size:11px;color:#1e3a8a;font-weight:800;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">
-                <i class="fa-solid fa-user-tie"></i> Assign To Engineer
+                <i class="fa-solid fa-user-tie"></i> Assign To Engineers (select 1–5)
             </label>
-            <div style="display:flex;gap:8px">
-                <select name="assignee" id="admAssignee" required style="flex:1;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:9px;background:#fff;font-size:13.5px;font-weight:600;color:#0a1f44">
-                    <option value="">— Choose engineer —</option>
-                    <?php foreach ($engineers_list as $eng): ?>
-                        <option value="<?= e($eng) ?>"><?= e($eng) ?></option>
-                    <?php endforeach; ?>
-                </select>
+            <div id="admEnggMsg" style="font-size:12px;color:#dc2626;margin-bottom:6px"></div>
+            <div class="adm-engg-list" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:240px;overflow-y:auto;padding:4px 0">
+                <?php foreach ($engineers_list as $eng): ?>
+                <label style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;cursor:pointer;transition:all .15s;font-size:13px;font-weight:500;color:#0a1f44"
+                       onmouseover="this.style.borderColor='#93c5fd'" onmouseout="this.style.borderColor='#e2e8f0'">
+                    <input type="checkbox" name="assignee[]" value="<?= e($eng['engg_name']) ?>" class="adm-engg-checkbox" style="width:16px;height:16px;accent-color:#1d4ed8;flex-shrink:0">
+                    <span style="flex:1"><?= e($eng['engg_name'])?></span>
+                    <span style="font-size:10.5px;color:#64748b;background:#f1f5f9;padding:1px 7px;border-radius:4px;white-space:nowrap"><?= e($eng['support_field'])?></span>
+                </label>
+                <?php endforeach; ?>
+            </div>
+            <div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end">
+                <button type="button" class="btn btn-sm btn-secondary" onclick="closeAdminModal()">Cancel</button>
                 <button type="submit" class="btn btn-sm btn-primary" data-testid="adm-assign-submit"><i class="fa-solid fa-paper-plane"></i> Assign</button>
             </div>
-            <small style="color:#64748b;font-size:11px;display:block;margin-top:6px">Assigning a Pending ticket also moves it to <b>In-Progress</b>.</small>
+            <small style="color:#64748b;font-size:11px;display:block;margin-top:6px">Assigning a Pending ticket also moves it to <b>In-Progress</b>. Multiple engineers can be assigned to the same ticket.</small>
         </form>
 
-        <!-- Update Status form -->
+        <!-- Update Status form (unchanged) -->
         <form method="post" action="includes/ticket_action.php" style="padding:14px 16px;background:linear-gradient(135deg,#fef3c7,#fee2e2);border:1px solid #fcd34d;border-radius:11px">
             <div id="admStatusTicketInputs"></div>
             <input type="hidden" name="action" value="status_update">

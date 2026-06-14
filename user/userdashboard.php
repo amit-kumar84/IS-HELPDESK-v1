@@ -2,8 +2,6 @@
 /** User self-profile dashboard */
 require_once 'includes/photo.php';
 
-// Floating Live Helpdesk Banner (top of dashboard)
-include 'includes/floating_banner.php';
 
 $stmt = mysqli_prepare($link, "SELECT * FROM emp_details WHERE staffid = ?");
 mysqli_stmt_bind_param($stmt, 's', $sid);

@@ -40,7 +40,18 @@ if (is_array($t_no_raw)) {
 $action = trim($_POST['action'] ?? $_GET['action'] ?? '');
 $actor  = $_SESSION['user_name'] ?? current_user_id();
 $soln   = trim($_POST['solution'] ?? '');
-$assignee = trim($_POST['assignee'] ?? '');
+/* Handle assignee as array (from checkboxes) or as single string */
+$assignee_raw = $_POST['assignee'] ?? [];
+if (is_array($assignee_raw)) {
+    $filtered = [];
+    foreach ($assignee_raw as $a) {
+        $a = trim($a);
+        if ($a !== '') $filtered[] = $a;
+    }
+    $assignee = implode(', ', $filtered);
+} else {
+    $assignee = trim($assignee_raw);
+}
 $new_status = trim($_POST['new_status'] ?? '');
 $return = $_SERVER['HTTP_REFERER'] ?? '../Admin_Home.php?AdminTab=All_Calls';
 $primary_t_no = $t_no[0] ?? '';

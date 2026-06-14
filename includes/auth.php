@@ -50,7 +50,16 @@ function logged_in() {
  * it is the only ISKot Admin allowed to manage other ISKot Admin
  * accounts (add / update / change password / remove).
  */
-function SUPER_ADMIN_ID() { return 'iskot'; }
+function SUPER_ADMIN_ID() {
+    // Allow the Super Admin ID to be overridden by a file in /memory/
+    // This lets the Super Admin account ID be changed safely at runtime.
+    $path = __DIR__ . '/../memory/super_admin_id';
+    if (is_readable($path)) {
+        $v = trim(@file_get_contents($path));
+        if ($v !== '') return strtolower($v);
+    }
+    return 'iskot';
+}
 
 function is_super_admin() {
     return current_role() === 'ISKotAdmin'
