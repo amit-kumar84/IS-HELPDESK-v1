@@ -34,7 +34,7 @@
         opts = opts || {};
         var type = opts.type || 'info';
         var t = document.createElement('div');
-        t.className = 'iskot-toast ' + type;
+        t.className = 'iskot-toast ' + type + (opts.actions ? ' centered' : '');
         t.innerHTML =
             '<div class="ic"><i class="fa-solid ' + (ICONS[type]||'fa-circle-info') + '"></i></div>' +
             '<div class="body">' +
@@ -47,12 +47,40 @@
             '</div>' +
             '<button class="cls" type="button" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>';
         t.querySelector('.msg').textContent = opts.message || '';
+        if (opts.actions) {
+            wrap.classList.add('confirm-layer');
+            wrap.style.top = '0';
+            wrap.style.right = '0';
+            wrap.style.bottom = '0';
+            wrap.style.left = '0';
+            wrap.style.maxWidth = 'none';
+            wrap.style.padding = '16px';
+            wrap.style.alignItems = 'center';
+            wrap.style.justifyContent = 'center';
+            wrap.style.flexDirection = 'row';
+        }
         wrap.appendChild(t);
         requestAnimationFrame(function(){ t.classList.add('show'); });
 
         function dismiss(){
             t.classList.remove('show');
             setTimeout(function(){ if (t.parentNode) t.parentNode.removeChild(t); }, 350);
+            if (opts.actions) {
+                setTimeout(function(){
+                    if (!wrap.querySelector('.iskot-toast.centered')) {
+                        wrap.classList.remove('confirm-layer');
+                        wrap.style.top = '';
+                        wrap.style.right = '';
+                        wrap.style.bottom = '';
+                        wrap.style.left = '';
+                        wrap.style.maxWidth = '';
+                        wrap.style.padding = '';
+                        wrap.style.alignItems = '';
+                        wrap.style.justifyContent = '';
+                        wrap.style.flexDirection = '';
+                    }
+                }, 360);
+            }
         }
         t.querySelector('.cls').addEventListener('click', dismiss);
 
@@ -66,18 +94,65 @@
     window.iskotNotify = function(message, type, title){
         return buildToast({ message: message, type: type || 'info', title: title });
     };
+
+    function closeConfirmModal(modal, restoreOverflow){
+        if (!modal) return;
+        modal.classList.remove('show');
+        setTimeout(function(){
+            if (modal.parentNode) modal.parentNode.removeChild(modal);
+            if (typeof restoreOverflow === 'function') restoreOverflow();
+        }, 260);
+    }
+
     window.iskotConfirm = function(message, onOk, onCancel, title){
-        var ref = buildToast({
-            message: message, type: 'confirm', title: title || 'Please confirm',
-            actions: true, timeout: 0
+        var old = document.getElementById('iskotConfirmModal');
+        if (old && old.parentNode) old.parentNode.removeChild(old);
+
+        var prevOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+
+        var modal = document.createElement('div');
+        modal.id = 'iskotConfirmModal';
+        modal.innerHTML =
+            '<div class="smodal-inner">' +
+                '<div class="smodal-accent"></div>' +
+                '<div class="smodal-header">' +
+                    '<div class="smodal-icon"><i class="fa-solid fa-circle-question"></i></div>' +
+                    '<div>' +
+                        '<h3>' + (title || 'Please confirm') + '</h3>' +
+                        '<p style="margin:3px 0 0;color:#475569;font-size:12px"></p>' +
+                    '</div>' +
+                    '<button type="button" class="smodal-close" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>' +
+                '</div>' +
+                '<div class="smodal-body"><p class="confirm-message"></p></div>' +
+                '<div class="smodal-footer">' +
+                    '<button type="button" class="btn btn-sm btn-secondary confirm-cancel">Cancel</button>' +
+                    '<button type="button" class="btn btn-sm btn-primary confirm-ok">OK</button>' +
+                '</div>' +
+            '</div>';
+        modal.querySelector('.confirm-message').textContent = message || 'Are you sure?';
+        document.body.appendChild(modal);
+
+        requestAnimationFrame(function(){ modal.classList.add('show'); });
+
+        function dismiss(){
+            closeConfirmModal(modal, function(){ document.body.style.overflow = prevOverflow; });
+        }
+
+        modal.querySelector('.smodal-close').addEventListener('click', function(){
+            dismiss();
+            if (typeof onCancel === 'function') onCancel();
         });
-        ref.el.querySelector('.acts .ok').addEventListener('click', function(){
-            ref.dismiss(); if (typeof onOk === 'function') onOk();
+        modal.querySelector('.confirm-cancel').addEventListener('click', function(){
+            dismiss();
+            if (typeof onCancel === 'function') onCancel();
         });
-        ref.el.querySelector('.acts .no').addEventListener('click', function(){
-            ref.dismiss(); if (typeof onCancel === 'function') onCancel();
+        modal.querySelector('.confirm-ok').addEventListener('click', function(){
+            dismiss();
+            if (typeof onOk === 'function') onOk();
         });
-        return ref;
+
+        return { el: modal, dismiss: dismiss };
     };
 
     // Override window.alert globally so every legacy alert() pops the pretty toast.

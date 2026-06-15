@@ -1,13 +1,21 @@
 <?php
-//	$data_fetch=mysqli_query($link,"SELECT * FROM `complain_register` WHERE `Staff_no`='$sid' ORDER BY Staff_no DESC LIMIT 1");
-//	$user_token_arr=mysqli_fetch_array($data_fetch);
-//	$ticket_no = $user_token_arr["t_no"] ;
+	$ticket_no = $_SESSION['token'] ?? '';
+?>
 
-	$ticket_no = $_SESSION['token'] ;
-	?>
-
-<br/>
-<br/>
-Your Query Has Been Submitted.<br/>
-Your Reference ID Number Is <span style="font-size:20px; color:green; font-weight:bold;" onMouseOver="this.style.color='red'" onMouseOut="this.style.color='green'"><?php echo $ticket_no ; ?></span>. Please Save This ID For Further Query.</br>
-Click Here To <a href="logout.php" style="color:red; text-decoration:none; font-size:20px; font-weight:bold;" onMouseOver="this.style.color='green'" onMouseOut="this.style.color='red'">Logout</a>
+<section class="submit-success-screen">
+	<div class="submit-success-card">
+		<div class="success-badge">
+			<i class="fa-solid fa-check"></i>
+		</div>
+		<div class="success-eyebrow">Ticket Submitted</div>
+		<h2>Successfully recorded</h2>
+		<p>Your request is now in the support queue. Save the reference ID below for follow-up or future enquiry.</p>
+		<div class="success-ticket-wrap">
+			<span>Reference ID</span>
+			<strong><?php echo htmlspecialchars($ticket_no); ?></strong>
+		</div>
+		<div class="success-actions">
+			<a class="success-btn" href="home.php?UserTab=DashBoard">OK</a>
+		</div>
+	</div>
+</section>

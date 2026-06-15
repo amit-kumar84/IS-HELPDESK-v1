@@ -22,7 +22,7 @@ if (isset($_POST['sub'])) {
     if ($staff_id === '' || $emp_name === '') {
         $err = 'Staff number and Employee name are required.';
     } else {
-        $pass = md5('Init@123');
+        $pass = md5('Belkot@123');
         $division = $dept;
         $stmt = mysqli_prepare($link,
             "INSERT INTO `emp_details`
@@ -40,7 +40,7 @@ if (isset($_POST['sub'])) {
                 $saved = save_uploaded_photo($_FILES['photo'], $staff_id, 'Pictures');
                 $photoMsg = $saved ? ' Photo saved as ' . basename($saved) . '.' : ' Photo upload failed (only JPG/PNG, max 5 MB).';
             }
-            flash_set('success', 'Employee "' . $emp_name . '" added. Default password: Init@123.' . $photoMsg);
+            flash_set('success', 'Employee "' . $emp_name . '" added. Default password: Belkot@123.' . $photoMsg);
             header('Location: Admin_Home.php?AdminTab=AddNewUser');
             exit;
         } else {
@@ -54,7 +54,7 @@ if (isset($_POST['sub'])) {
     <div class="ic"><i class="fa-solid fa-user-plus"></i></div>
     <div>
         <h2>Add New Employee</h2>
-        <div class="sub">Create a new user account. Default password: <code>Init@123</code>. Upload a passport-style photo (saved as <code>{Staff#}.JPG</code>).</div>
+        <div class="sub">Create a new user account. Default password: <code>Belkot@123</code>. Upload a passport-style photo (saved as <code>{Staff#}.JPG</code>).</div>
     </div>
     <div class="actions">
         <a href="Admin_Home.php?AdminTab=ManageUsers" class="btn btn-sm btn-secondary"><i class="fa-solid fa-users"></i> Manage Users</a>

@@ -1,26 +1,35 @@
 
 
 <?php
-// Preload ALL employee data on page load for instant filtering
+// Preload ALL employee data on page load for instant filtering.
+// The old version queried hardware once per employee, which made the tab feel slow.
 $all_employees = [];
+$hardware_by_staff = [];
+
 $emp_query = "SELECT * FROM `emp_details` ORDER BY `cost_center`, `deptt`, `sec`, `staffid`, `username` ASC";
 $emp_result = mysqli_query($link, $emp_query);
 
-while($emp = mysqli_fetch_assoc($emp_result)) {
-    $emp['hardware'] = [];
-    $staff_id = $emp['staffid'];
-    
-    // Fetch all hardware in one query
-    $hw_query = "SELECT CATG, HD_ID_NO, MAKE, MODEL FROM `hardware_master` WHERE `STAFF_NO`='$staff_id'
-                UNION ALL
-                SELECT CATG, HD_ID_NO, MAKE, HD_ID_RECORD as MODEL FROM `hardware_stroage_master` WHERE `STAFF_NO`='$staff_id'";
-    
-    $hw_result = mysqli_query($link, $hw_query);
-    while($hw = mysqli_fetch_assoc($hw_result)) {
-        $emp['hardware'][] = $hw;
+$hw_query = "SELECT `STAFF_NO`, `CATG`, `HD_ID_NO`, `MAKE`, `MODEL` FROM `hardware_master`
+             UNION ALL
+             SELECT `STAFF_NO`, `CATG`, `HD_ID_NO`, `MAKE`, `HD_ID_RECORD` AS `MODEL` FROM `hardware_stroage_master`";
+$hw_result = mysqli_query($link, $hw_query);
+
+if ($hw_result) {
+    while ($hw = mysqli_fetch_assoc($hw_result)) {
+        $staffId = (string)($hw['STAFF_NO'] ?? '');
+        unset($hw['STAFF_NO']);
+        if ($staffId !== '') {
+            $hardware_by_staff[$staffId][] = $hw;
+        }
     }
-    
-    $all_employees[] = $emp;
+}
+
+if ($emp_result) {
+    while ($emp = mysqli_fetch_assoc($emp_result)) {
+        $staffId = (string)($emp['staffid'] ?? '');
+        $emp['hardware'] = $hardware_by_staff[$staffId] ?? [];
+        $all_employees[] = $emp;
+    }
 }
 
 // Convert to JSON for JavaScript filtering
@@ -72,15 +81,6 @@ $employees_json = json_encode($all_employees);
 
 .search-input::placeholder {
     color: #94a3b8;
-}
-
-.loading-spinner {
-    display: inline-block;
-    margin-left: 0;
-    color: #ff9933;
-    font-weight: 700;
-    font-size: 14px;
-    letter-spacing: 0.5px;
 }
 
 .result-count {
@@ -218,6 +218,112 @@ $employees_json = json_encode($all_employees);
     background: linear-gradient(135deg, rgba(255,153,51,0.05) 0%, transparent 100%);
 }
 
+.ticket-pagination.user-search-pagination {
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 12px 0 0;
+    border-top: 1px solid rgba(148,163,184,.18);
+}
+
+.ticket-page-size-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.ticket-page-size-form label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.ticket-page-size-form select {
+    min-width: 92px;
+    padding: 9px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(37,99,235,.18);
+    background: linear-gradient(180deg, #ffffff, #f8fbff);
+    color: #0a1f44;
+    font-weight: 700;
+    box-shadow: inset 0 1px 2px rgba(15,23,42,.04);
+}
+
+.ticket-pagination-center {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    flex-direction: column;
+    flex-wrap: wrap;
+    gap: 10px 12px;
+    justify-content: center;
+}
+
+.ticket-pagination-summary {
+    color: #475569;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+    white-space: nowrap;
+    width: 100%;
+}
+
+.ticket-page-links {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+}
+
+.page-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 74px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(37,99,235,.18);
+    background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+    color: #0a1f44;
+    font-weight: 700;
+    text-decoration: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.page-chip:hover {
+    transform: translateY(-2px);
+    text-decoration: none;
+    border-color: rgba(255,153,51,.35);
+}
+
+.page-chip.disabled {
+    pointer-events: none;
+    opacity: 0.45;
+    box-shadow: none;
+}
+
+.ticket-pagination-right {
+    margin-left: auto;
+}
+
+.user-search-page-note {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(19,136,8,.10), rgba(255,153,51,.10));
+    border: 1px solid rgba(19,136,8,.16);
+    color: #0a1f44;
+    font-size: 12px;
+    font-weight: 700;
+}
+
 @keyframes slideInDown {
     from {
         opacity: 0;
@@ -260,6 +366,21 @@ $employees_json = json_encode($all_employees);
     .btn-print {
         justify-content: center;
     }
+
+    .ticket-pagination.user-search-pagination {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .ticket-pagination-center,
+    .ticket-pagination-right {
+        margin-left: 0;
+        justify-content: center;
+    }
+
+    .ticket-page-links {
+        flex-wrap: wrap;
+    }
     
     #table_func tbody td {
         padding: 10px 8px;
@@ -275,7 +396,6 @@ $employees_json = json_encode($all_employees);
 <div class="search-container">
 <div class="search-controls">
     <input type="text" id="searchInput" class="search-input" autofocus placeholder="🔍 Search by Staff Number or Employee Name...">
-    <span class="loading-spinner" id="loadingStatus"></span>
     <div class="result-count">📊 Total: <span id="resultCount">0</span> Employees</div>
     <button onclick="printTable()" class="btn-print">🖨️ Print Results</button>
 </div>
@@ -301,27 +421,105 @@ $employees_json = json_encode($all_employees);
         </tbody>
     </table>
 </div>
+
+<div class="ticket-pagination user-search-pagination">
+    <form class="ticket-page-size-form" onsubmit="return false;">
+        <label for="pageSizeSelect">Entries per page</label>
+        <select id="pageSizeSelect">
+            <option value="10">10</option>
+            <option value="100" selected>100</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+            <option value="500">500</option>
+        </select>
+    </form>
+
+    <div class="ticket-pagination-center">
+        <div class="ticket-pagination-summary" id="pageSummary">Showing 0-0 of 0</div>
+        <div class="ticket-page-links">
+            <a href="#" class="page-chip disabled" id="prevPageBtn">Prev</a>
+            <a href="#" class="page-chip disabled" id="nextPageBtn">Next</a>
+        </div>
+    </div>
+
+    <div class="ticket-pagination-right">
+        <span class="user-search-page-note" id="pageNote">Page 1 of 1</span>
+    </div>
+</div>
 </div>
 
 <script>
 const employeesData = <?php echo $employees_json; ?>;
 let filteredEmployees = [...employeesData];
+let currentPage = 1;
+let pageSize = 100;
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function updatePagination(totalItems) {
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+    if (currentPage > totalPages) currentPage = totalPages;
+    const start = totalItems === 0 ? 0 : ((currentPage - 1) * pageSize) + 1;
+    const end = totalItems === 0 ? 0 : Math.min(currentPage * pageSize, totalItems);
+
+    document.getElementById('pageSummary').textContent = `Showing ${start}-${end} of ${totalItems.toLocaleString()}`;
+    document.getElementById('pageNote').textContent = `Page ${currentPage} of ${totalPages}`;
+
+    const prevBtn = document.getElementById('prevPageBtn');
+    const nextBtn = document.getElementById('nextPageBtn');
+
+    prevBtn.classList.toggle('disabled', currentPage <= 1);
+    nextBtn.classList.toggle('disabled', currentPage >= totalPages);
+    prevBtn.setAttribute('aria-disabled', currentPage <= 1 ? 'true' : 'false');
+    nextBtn.setAttribute('aria-disabled', currentPage >= totalPages ? 'true' : 'false');
+
+    prevBtn.onclick = function(event) {
+        event.preventDefault();
+        if (currentPage > 1) {
+            currentPage -= 1;
+            renderTable(filteredEmployees);
+        }
+    };
+
+    nextBtn.onclick = function(event) {
+        event.preventDefault();
+        if (currentPage < totalPages) {
+            currentPage += 1;
+            renderTable(filteredEmployees);
+        }
+    };
+}
 
 function renderTable(data) {
     const tbody = document.getElementById('tableBody');
     tbody.innerHTML = '';
+
+    const totalItems = data.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+    if (currentPage > totalPages) currentPage = totalPages;
+    const startIndex = (currentPage - 1) * pageSize;
+    const pageData = data.slice(startIndex, startIndex + pageSize);
     
-    if (data.length === 0) {
+    if (totalItems === 0) {
         tbody.innerHTML = `<tr><td colspan="10" class="no-data-message">
             <div style="font-size: 48px; margin-bottom: 10px;">🔍</div>
             <strong style="color: #0a1f44;">No employees found</strong><br>
             <span style="font-size: 12px;">Try searching with a different name or staff number</span>
         </td></tr>`;
         document.getElementById('resultCount').textContent = '0';
+        updatePagination(0);
         return;
     }
     
-    data.forEach((emp, index) => {
+    pageData.forEach((emp, index) => {
         const hardwareHtml = emp.hardware.length > 0 
             ? emp.hardware.map(hw => {
                 const colors = {
@@ -344,7 +542,7 @@ function renderTable(data) {
         
         const row = `
             <tr style="animation: fadeIn 0.3s ease ${index * 0.05}s backwards;">
-                <td style="font-weight: 700; background: linear-gradient(135deg, rgba(255,153,51,0.1) 0%, transparent 100%);">${index + 1}</td>
+                <td style="font-weight: 700; background: linear-gradient(135deg, rgba(255,153,51,0.1) 0%, transparent 100%);">${startIndex + index + 1}</td>
                 <td style="font-weight: 600;">${emp.cost_center || '—'}</td>
                 <td style="font-weight: 600;"><span style="background: rgba(255,153,51,0.15); padding: 4px 8px; border-radius: 4px;">${emp.deptt} (${emp.sec})</span></td>
                 <td style="font-weight: 700; color: #0a1f44;">${emp.staffid}</td>
@@ -359,12 +557,14 @@ function renderTable(data) {
         tbody.innerHTML += row;
     });
     
-    document.getElementById('resultCount').textContent = data.length;
+    document.getElementById('resultCount').textContent = totalItems;
+    updatePagination(totalItems);
 }
 
 // Instant search on key press
 document.getElementById('searchInput').addEventListener('keyup', function() {
     const searchTerm = this.value.toLowerCase().trim();
+    currentPage = 1;
     
     if (searchTerm === '') {
         filteredEmployees = [...employeesData];
@@ -375,6 +575,12 @@ document.getElementById('searchInput').addEventListener('keyup', function() {
         );
     }
     
+    renderTable(filteredEmployees);
+});
+
+document.getElementById('pageSizeSelect').addEventListener('change', function() {
+    pageSize = parseInt(this.value, 10) || 20;
+    currentPage = 1;
     renderTable(filteredEmployees);
 });
 
@@ -413,11 +619,9 @@ style.textContent = `
 `;
 document.head.appendChild(style);
 
-// Load table on page load
-document.addEventListener('DOMContentLoaded', function() {
-    renderTable(employeesData);
-    document.getElementById('searchInput').focus();
-});
+// Load table immediately when the script runs, so the tab shows data as soon as the HTML is ready.
+renderTable(employeesData);
+document.getElementById('searchInput').focus();
 </script>
 
 <style>

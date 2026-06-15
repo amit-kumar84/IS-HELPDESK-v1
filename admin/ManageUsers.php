@@ -1,6 +1,207 @@
 <?php
-/** Manage Users — list + photo + Excel-style row + CSV export */
+/** Manage Users — list + photo + Excel-style row + XLSX export */
 require_once 'includes/photo.php';
+
+function xlsx_xml_escape(string $value): string {
+    return htmlspecialchars($value, ENT_QUOTES | ENT_XML1, 'UTF-8');
+}
+
+function xlsx_column_letter(int $index): string {
+    $letter = '';
+    while ($index > 0) {
+        $index--;
+        $letter = chr(65 + ($index % 26)) . $letter;
+        $index = intdiv($index, 26);
+    }
+    return $letter;
+}
+
+function xlsx_cell(int $row, int $column, string $value): string {
+    $ref = xlsx_column_letter($column) . $row;
+    return '<c r="' . $ref . '" t="inlineStr"><is><t>' . xlsx_xml_escape($value) . '</t></is></c>';
+}
+
+function xlsx_zip_build(array $entries): string {
+    $localData = '';
+    $centralData = '';
+    $offset = 0;
+
+    foreach ($entries as $entry) {
+        $name = str_replace('\\', '/', $entry['name']);
+        $data = $entry['data'];
+        $crc = crc32($data);
+        if ($crc < 0) {
+            $crc = $crc + 4294967296;
+        }
+        $compressedSize = strlen($data);
+        $uncompressedSize = $compressedSize;
+        $nameLength = strlen($name);
+
+        $localHeader = pack(
+            'VvvvvvVVVvv',
+            0x04034b50,
+            20,
+            0,
+            0,
+            0,
+            0,
+            $crc,
+            $compressedSize,
+            $uncompressedSize,
+            $nameLength,
+            0
+        ) . $name . $data;
+
+        $localData .= $localHeader;
+
+        $centralHeader = pack(
+            'VvvvvvvVVVvvvvvVV',
+            0x02014b50,
+            20,
+            20,
+            0,
+            0,
+            0,
+            0,
+            $crc,
+            $compressedSize,
+            $uncompressedSize,
+            $nameLength,
+            0,
+            0,
+            0,
+            0,
+            0,
+            $offset
+        ) . $name;
+
+        $centralData .= $centralHeader;
+        $offset += strlen($localHeader);
+    }
+
+    $entryCount = count($entries);
+    $centralSize = strlen($centralData);
+    $centralOffset = strlen($localData);
+
+    $endRecord = pack(
+        'VvvvvVVv',
+        0x06054b50,
+        0,
+        0,
+        $entryCount,
+        $entryCount,
+        $centralSize,
+        $centralOffset,
+        0
+    );
+
+    return $localData . $centralData . $endRecord;
+}
+
+// XLSX export
+if (isset($_GET['export']) && $_GET['export'] === 'xlsx') {
+    while (ob_get_level()) ob_end_clean();
+    $q = trim($_GET['q'] ?? '');
+
+    $headers = ['Staff #', 'Photo File', 'Name', 'Department', 'Section', 'Designation', 'Grade', 'Gender', 'IP Phone', 'Phone', 'D.O.B.', 'Cost Center'];
+    $rowsXml = [];
+    $rowIndex = 1;
+    $headerCells = [];
+    foreach ($headers as $columnIndex => $header) {
+        $headerCells[] = xlsx_cell($rowIndex, $columnIndex + 1, $header);
+    }
+    $rowsXml[] = '<row r="1">' . implode('', $headerCells) . '</row>';
+
+    if ($q !== '') {
+        $like = "%$q%";
+        $stmt = mysqli_prepare($link, "SELECT staffid,username,deptt,sec,desg,grade,gender,ip_phone,phone_no,d_o_b,cost_center FROM emp_details WHERE staffid LIKE ? OR username LIKE ? OR deptt LIKE ? OR sec LIKE ? OR desg LIKE ? ORDER BY staffid");
+        mysqli_stmt_bind_param($stmt, 'sssss', $like,$like,$like,$like,$like);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+    } else {
+        $result = mysqli_query($link, "SELECT staffid,username,deptt,sec,desg,grade,gender,ip_phone,phone_no,d_o_b,cost_center FROM emp_details ORDER BY staffid");
+    }
+
+    $rowIndex = 2;
+    while ($u = mysqli_fetch_assoc($result)) {
+        $photo = user_photo($u['staffid']);
+        $photoFile = $photo ? basename($photo) : '';
+        $values = [
+            $u['staffid'],
+            $photoFile,
+            $u['username'],
+            $u['deptt'],
+            $u['sec'],
+            $u['desg'],
+            $u['grade'],
+            $u['gender'],
+            $u['ip_phone'],
+            $u['phone_no'],
+            $u['d_o_b'],
+            $u['cost_center'],
+        ];
+        $cells = [];
+        foreach ($values as $columnIndex => $value) {
+            $cells[] = xlsx_cell($rowIndex, $columnIndex + 1, (string) $value);
+        }
+        $rowsXml[] = '<row r="' . $rowIndex . '">' . implode('', $cells) . '</row>';
+        $rowIndex++;
+    }
+
+    $sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        . '<sheetData>' . implode('', $rowsXml) . '</sheetData>'
+        . '</worksheet>';
+
+    $workbookXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        . '<sheets><sheet name="Manage Users" sheetId="1" r:id="rId1"/></sheets>'
+        . '</workbook>';
+
+    $stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        . '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        . '<fonts count="1"><font><sz val="11"/><color theme="1"/><name val="Calibri"/><family val="2"/></font></fonts>'
+        . '<fills count="1"><fill><patternFill patternType="none"/></fill></fills>'
+        . '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
+        . '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+        . '<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>'
+        . '</styleSheet>';
+
+    $contentTypesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        . '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        . '<Default Extension="xml" ContentType="application/xml"/>'
+        . '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        . '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        . '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+        . '</Types>';
+
+    $rootRelsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+        . '</Relationships>';
+
+    $workbookRelsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+        . '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+        . '</Relationships>';
+
+    $xlsxData = xlsx_zip_build([
+        ['name' => '[Content_Types].xml', 'data' => $contentTypesXml],
+        ['name' => '_rels/.rels', 'data' => $rootRelsXml],
+        ['name' => 'xl/workbook.xml', 'data' => $workbookXml],
+        ['name' => 'xl/_rels/workbook.xml.rels', 'data' => $workbookRelsXml],
+        ['name' => 'xl/worksheets/sheet1.xml', 'data' => $sheetXml],
+        ['name' => 'xl/styles.xml', 'data' => $stylesXml],
+    ]);
+
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename=BEL_Employees_' . date('Ymd_His') . '.xlsx');
+    header('Content-Length: ' . strlen($xlsxData));
+    echo $xlsxData;
+    exit;
+}
 
 // CSV export
 if (isset($_GET['export']) && $_GET['export'] === 'csv') {
@@ -29,41 +230,6 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     }
     fclose($out);
     exit;
-}
-
-// ZIP export (data + photos)
-if (isset($_GET['export']) && $_GET['export'] === 'zip' && class_exists('ZipArchive')) {
-    while (ob_get_level()) ob_end_clean();
-    $q = trim($_GET['q'] ?? '');
-    $tmp = tempnam(sys_get_temp_dir(), 'bel');
-    $zip = new ZipArchive();
-    $zip->open($tmp, ZipArchive::OVERWRITE);
-
-    $csv = "Staff #,Name,Department,Section,Designation,Grade,Gender,IP Phone,Phone,DOB,Cost Center,Photo File\n";
-    $where = '1=1';
-    if ($q !== '') {
-        $like = '%' . $q . '%';
-        $stmt = mysqli_prepare($link, "SELECT * FROM emp_details WHERE staffid LIKE ? OR username LIKE ? OR deptt LIKE ? OR sec LIKE ? OR desg LIKE ? ORDER BY staffid");
-        mysqli_stmt_bind_param($stmt, 'sssss', $like,$like,$like,$like,$like);
-        mysqli_stmt_execute($stmt);
-        $rows = mysqli_stmt_get_result($stmt);
-    } else {
-        $rows = mysqli_query($link, "SELECT * FROM emp_details ORDER BY staffid");
-    }
-    while ($u = mysqli_fetch_assoc($rows)) {
-        $photo = user_photo($u['staffid']);
-        $photoFile = $photo ? $u['staffid'] . '.JPG' : '';
-        $csv .= '"'.str_replace('"','""',$u['staffid']).'","'.str_replace('"','""',$u['username']).'","'.str_replace('"','""',$u['deptt']).'","'.str_replace('"','""',$u['sec']).'","'.str_replace('"','""',$u['desg']).'","'.str_replace('"','""',$u['grade']).'","'.str_replace('"','""',$u['gender']).'","'.str_replace('"','""',$u['ip_phone']).'","'.str_replace('"','""',$u['phone_no']).'","'.str_replace('"','""',$u['d_o_b']).'","'.str_replace('"','""',$u['cost_center']).'","'.$photoFile."\"\n";
-        if ($photo && is_file($photo)) $zip->addFile($photo, 'photos/' . $u['staffid'] . '.JPG');
-    }
-    $zip->addFromString('employees.csv', $csv);
-    $zip->addFromString('README.txt', "BEL Kotdwar IT Helpdesk — Employee Export\nGenerated " . date('c') . "\n\n• employees.csv  — tabular data\n• photos/        — JPGs named by Staff Number\n");
-    $zip->close();
-
-    header('Content-Type: application/zip');
-    header('Content-Disposition: attachment; filename=BEL_Employees_' . date('Ymd_His') . '.zip');
-    header('Content-Length: ' . filesize($tmp));
-    readfile($tmp); @unlink($tmp); exit;
 }
 
 // Actions
@@ -119,12 +285,11 @@ $pages = max(1, (int) ceil($total / $per));
     <div class="ic"><i class="fa-solid fa-users-gear"></i></div>
     <div>
         <h2>Manage Employees</h2>
-        <div class="sub">Browse, search, reset password, remove employees. Export data + photos as Excel or ZIP.</div>
+        <div class="sub">Browse, search, reset password, remove employees. Export data as CSV.</div>
     </div>
     <div class="actions">
         <a href="Admin_Home.php?AdminTab=AddNewUser" class="btn btn-sm" data-testid="btn-goto-add-user"><i class="fa-solid fa-user-plus"></i> Add New User</a>
-        <a href="Admin_Home.php?AdminTab=ManageUsers&export=csv<?= $q!=='' ? '&q='.urlencode($q) : '' ?>" class="btn btn-sm btn-success"><i class="fa-solid fa-file-csv"></i> Export CSV</a>
-        <a href="Admin_Home.php?AdminTab=ManageUsers&export=zip<?= $q!=='' ? '&q='.urlencode($q) : '' ?>" class="btn btn-sm btn-accent"><i class="fa-solid fa-file-zipper"></i> Export ZIP (with photos)</a>
+        <a href="Admin_Home.php?AdminTab=ManageUsers&export=xlsx<?= $q!=='' ? '&q='.urlencode($q) : '' ?>" class="btn btn-sm btn-success"><i class="fa-solid fa-file-excel"></i> Export XLSX</a>
     </div>
 </div>
 
@@ -140,11 +305,11 @@ $pages = max(1, (int) ceil($total / $per));
     </form>
 </div>
 
-<div class="table-wrap">
+<div class="table-wrap manage-users-table-wrap">
     <table data-testid="users-table">
         <thead>
             <tr>
-                <th style="width:50px">Photo</th><th>Staff #</th><th>Name</th><th>Department</th>
+                <th class="photo-col" style="width:84px">Photo</th><th>Staff #</th><th>Name</th><th>Department</th>
                 <th>Section</th><th>Designation</th><th>Grade</th><th>Gender</th>
                 <th>Phone</th><th>D.O.B.</th><th style="text-align:right;width:160px">Actions</th>
             </tr>
@@ -152,7 +317,7 @@ $pages = max(1, (int) ceil($total / $per));
         <tbody>
             <?php while ($u = mysqli_fetch_assoc($rows)): ?>
                 <tr>
-                    <td><?= render_avatar($u['staffid'], $u['username'], 36) ?></td>
+                    <td class="photo-col"><?= render_avatar($u['staffid'], $u['username'], 44) ?></td>
                     <td><b style="color:#0a1f44"><?= e($u['staffid']) ?></b></td>
                     <td><?= e($u['username']) ?></td>
                     <td><?= e($u['deptt']) ?></td>
