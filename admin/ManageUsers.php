@@ -247,10 +247,10 @@ if (isset($_POST['delete_user'])) {
 }
 if (isset($_POST['reset_user'])) {
     $staffid = trim($_POST['reset_user']);
-    $pwd = md5('Init@123');
+    $pwd = md5('Belkot@123');
     $stmt = mysqli_prepare($link, "UPDATE emp_details SET staffpass = ? WHERE staffid = ?");
     mysqli_stmt_bind_param($stmt, 'ss', $pwd, $staffid);
-    if (mysqli_stmt_execute($stmt)) flash_set('success', "Password reset for $staffid → 'Init@123'.");
+    if (mysqli_stmt_execute($stmt)) flash_set('success', "Password reset for $staffid → 'Belkot@123'.");
     else flash_set('danger', "Could not reset password for $staffid.");
     header('Location: Admin_Home.php?AdminTab=ManageUsers' . (!empty($_POST['q']) ? '&q=' . urlencode($_POST['q']) : ''));
     exit;
@@ -258,40 +258,53 @@ if (isset($_POST['reset_user'])) {
 
 // Query
 $q = trim($_GET['q'] ?? '');
-$page = max(1, (int)($_GET['p'] ?? 1));
-$per = 25; $off = ($page - 1) * $per;
 
 if ($q !== '') {
     $like = "%$q%";
-    $stmt = mysqli_prepare($link, "SELECT staffid,username,deptt,sec,desg,grade,gender,ip_phone,phone_no,d_o_b FROM emp_details WHERE staffid LIKE ? OR username LIKE ? OR deptt LIKE ? OR sec LIKE ? OR desg LIKE ? ORDER BY staffid LIMIT ? OFFSET ?");
-    mysqli_stmt_bind_param($stmt, 'sssssii', $like,$like,$like,$like,$like, $per, $off);
+    $stmt = mysqli_prepare($link, "SELECT staffid,username,deptt,sec,desg,grade,gender,ip_phone,phone_no,d_o_b FROM emp_details WHERE staffid LIKE ? OR username LIKE ? OR deptt LIKE ? OR sec LIKE ? OR desg LIKE ? ORDER BY staffid");
+    mysqli_stmt_bind_param($stmt, 'sssss', $like,$like,$like,$like,$like);
     mysqli_stmt_execute($stmt);
     $rows = mysqli_stmt_get_result($stmt);
-    $cstmt = mysqli_prepare($link, "SELECT COUNT(*) FROM emp_details WHERE staffid LIKE ? OR username LIKE ? OR deptt LIKE ? OR sec LIKE ? OR desg LIKE ?");
-    mysqli_stmt_bind_param($cstmt, 'sssss', $like,$like,$like,$like,$like);
-    mysqli_stmt_execute($cstmt);
-    $total = (int) mysqli_fetch_array(mysqli_stmt_get_result($cstmt))[0];
+    $total = (int) mysqli_fetch_array(mysqli_prepare($link, "SELECT COUNT(*) FROM emp_details WHERE staffid LIKE ? OR username LIKE ? OR deptt LIKE ? OR sec LIKE ? OR desg LIKE ?"))->fetch_array()[0];
 } else {
-    $stmt = mysqli_prepare($link, "SELECT staffid,username,deptt,sec,desg,grade,gender,ip_phone,phone_no,d_o_b FROM emp_details ORDER BY staffid LIMIT ? OFFSET ?");
-    mysqli_stmt_bind_param($stmt, 'ii', $per, $off);
+    $stmt = mysqli_prepare($link, "SELECT staffid,username,deptt,sec,desg,grade,gender,ip_phone,phone_no,d_o_b FROM emp_details ORDER BY staffid");
     mysqli_stmt_execute($stmt);
     $rows = mysqli_stmt_get_result($stmt);
     $total = (int) mysqli_fetch_array(mysqli_query($link, "SELECT COUNT(*) FROM emp_details"))[0];
 }
-$pages = max(1, (int) ceil($total / $per));
 ?>
 
 <div class="page-head">
     <div class="ic"><i class="fa-solid fa-users-gear"></i></div>
     <div>
         <h2>Manage Employees</h2>
-        <div class="sub">Browse, search, reset password, remove employees. Export data as CSV.</div>
+        <div class="sub">Browse, search, reset password, remove employees. Export data as XLSX.</div>
     </div>
     <div class="actions">
         <a href="Admin_Home.php?AdminTab=AddNewUser" class="btn btn-sm" data-testid="btn-goto-add-user"><i class="fa-solid fa-user-plus"></i> Add New User</a>
         <a href="Admin_Home.php?AdminTab=ManageUsers&export=xlsx<?= $q!=='' ? '&q='.urlencode($q) : '' ?>" class="btn btn-sm btn-success"><i class="fa-solid fa-file-excel"></i> Export XLSX</a>
     </div>
 </div>
+
+<style>
+    #manageUsersTable { border:1px solid #000; border-collapse:collapse; width:100%; }
+    #manageUsersTable th, #manageUsersTable td { border:1px solid #000; text-align:center; vertical-align:middle; }
+    #manageUsersTable th.photo-col, #manageUsersTable td.photo-col { width:120px; }
+    #manageUsersTable td.actions-col { display:flex; flex-direction:column; align-items:center; gap:6px; min-width:120px; max-width:120px; padding:8px 6px; }
+    #manageUsersTable td.actions-col a,
+    #manageUsersTable td.actions-col button {
+        width:100px;
+        min-width:100px;
+        max-width:100px;
+        display:inline-flex;
+        justify-content:center;
+        align-items:center;
+    }
+    #manageUsersTable td.actions-col form { width:100%; }
+    #manageUsersTable td.actions-col .btn i { margin-right:6px; }
+    #manageUsersTable th:nth-child(3), #manageUsersTable td:nth-child(3) { width:120px; max-width:120px; }
+    #manageUsersTable th:nth-child(6), #manageUsersTable td:nth-child(6) { width:1290px; max-width:120px; }
+</style>
 
 <div class="card">
     <form method="get" class="flex" style="gap:10px;flex-wrap:wrap">
@@ -306,7 +319,7 @@ $pages = max(1, (int) ceil($total / $per));
 </div>
 
 <div class="table-wrap manage-users-table-wrap">
-    <table data-testid="users-table">
+    <table id="manageUsersTable" data-testid="users-table">
         <thead>
             <tr>
                 <th class="photo-col" style="width:84px">Photo</th><th>Staff #</th><th>Name</th><th>Department</th>
@@ -327,16 +340,16 @@ $pages = max(1, (int) ceil($total / $per));
                     <td><?= e($u['gender']) ?></td>
                     <td style="white-space:nowrap;font-variant-numeric:tabular-nums;font-size:11.5px"><?= e(trim(($u['ip_phone'] ?? '') . ' / ' . ($u['phone_no'] ?? ''),' /')) ?></td>
                     <td style="white-space:nowrap;font-size:11.5px"><?= e($u['d_o_b']) ?></td>
-                    <td style="text-align:right;white-space:nowrap">
-                        <a href="Admin_Home.php?AdminTab=EditUser&sid=<?= urlencode($u['staffid']) ?>" class="btn btn-xs btn-secondary" title="Edit details / password"><i class="fa-solid fa-pen-to-square"></i></a>
-                        <a href="Admin_Home.php?AdminTab=PrintEmployee&sid=<?= urlencode($u['staffid']) ?>" target="_blank" class="btn btn-xs btn-secondary" title="Print record"><i class="fa-solid fa-print"></i></a>
-                        <form method="post" style="display:inline" onsubmit="return confirm('Reset password to Init@123 for <?= e($u['staffid']) ?>?')">
+                    <td class="actions-col">
+                        <a href="Admin_Home.php?AdminTab=EditUser&sid=<?= urlencode($u['staffid']) ?>" class="btn btn-xs btn-secondary" title="Edit details / password"><i class="fa-solid fa-pen-to-square"></i> Edit</a>
+                        <a href="Admin_Home.php?AdminTab=PrintEmployee&sid=<?= urlencode($u['staffid']) ?>" target="_blank" class="btn btn-xs btn-secondary" title="Print record"><i class="fa-solid fa-print"></i> Print</a>
+                        <form method="post" class="reset-user-password-form" data-staffid="<?= e($u['staffid']) ?>">
                             <input type="hidden" name="q" value="<?= e($q) ?>">
-                            <button type="submit" name="reset_user" value="<?= e($u['staffid']) ?>" class="btn btn-xs btn-secondary" title="Reset password"><i class="fa-solid fa-key"></i></button>
+                            <button type="submit" name="reset_user" value="<?= e($u['staffid']) ?>" class="btn btn-xs btn-secondary" title="Reset password"><i class="fa-solid fa-key"></i> Reset</button>
                         </form>
-                        <form method="post" style="display:inline" onsubmit="return confirm('Remove user <?= e($u['staffid']) ?> permanently? This cannot be undone.')">
+                        <form method="post" onsubmit="return confirm('Remove user <?= e($u['staffid']) ?> permanently? This cannot be undone.')">
                             <input type="hidden" name="q" value="<?= e($q) ?>">
-                            <button type="submit" name="delete_user" value="<?= e($u['staffid']) ?>" class="btn btn-xs btn-danger" title="Remove user" data-testid="btn-delete-<?= e($u['staffid']) ?>"><i class="fa-solid fa-trash"></i></button>
+                            <button type="submit" name="delete_user" value="<?= e($u['staffid']) ?>" class="btn btn-xs btn-danger" title="Remove user" data-testid="btn-delete-<?= e($u['staffid']) ?>"><i class="fa-solid fa-trash"></i> Delete</button>
                         </form>
                     </td>
                 </tr>
@@ -348,14 +361,29 @@ $pages = max(1, (int) ceil($total / $per));
     </table>
 </div>
 
-<?php if ($pages > 1): ?>
-<div class="flex" style="justify-content:center;gap:6px;margin-top:8px;flex-wrap:wrap">
-    <?php
-    $base = 'Admin_Home.php?AdminTab=ManageUsers' . ($q !== '' ? '&q=' . urlencode($q) : '');
-    for ($i = max(1, $page - 3); $i <= min($pages, $page + 3); $i++):
-    ?>
-        <a class="btn btn-sm <?= $i === $page ? '' : 'btn-secondary' ?>" href="<?= $base ?>&p=<?= $i ?>"><?= $i ?></a>
-    <?php endfor; ?>
-    <span class="text-muted" style="font-size:11.5px;margin-left:8px">Page <?= $page ?> / <?= $pages ?></span>
-</div>
-<?php endif; ?>
+<script>
+(function(){
+    var forms = document.querySelectorAll('.reset-user-password-form');
+    forms.forEach(function(form){
+        form.addEventListener('submit', function(event){
+            event.preventDefault();
+            var staffid = form.getAttribute('data-staffid');
+            if (!staffid) return;
+            if (typeof window.iskotConfirm === 'function') {
+                window.iskotConfirm(
+                    'Reset password to Belkot@123 for ' + staffid + '?',
+                    function(){ form.submit(); },
+                    null,
+                    'Confirm Reset'
+                );
+            } else {
+                if (window.confirm('Reset password to Belkot@123 for ' + staffid + '?')) {
+                    form.submit();
+                }
+            }
+        });
+    });
+})();
+</script>
+
+

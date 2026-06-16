@@ -1,24 +1,192 @@
 <?php
-/** Engineer Directory — with photos + CSV/ZIP export */
+/** Engineer Directory — with XLSX export */
 require_once 'includes/photo.php';
 
-if (isset($_GET['export']) && $_GET['export'] === 'csv') {
-    while (ob_get_level()) ob_end_clean();
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename=BEL_Engineers_' . date('Ymd_His') . '.csv');
-    $out = fopen('php://output', 'w');
-    fputcsv($out, ['Sr.', 'BEL ID', 'Photo File', 'Name', 'Staff No', 'Support Field', 'Company', 'Joining Date', 'Left Date', 'Status', 'Presence']);
-    $r = mysqli_query($link, "SELECT * FROM s_engg_login ORDER BY status ASC, engg_name ASC");
-    $i = 1;
-    while ($row = mysqli_fetch_assoc($r)) {
-        $p = engineer_photo($row['enggid']);
-        fputcsv($out, [$i++, $row['enggid'], $p ? basename($p) : '',
-            $row['engg_name'], $row['engg_staff_no'], $row['support_field'], $row['company'],
-            $row['joining_date'], $row['left_date'],
-            $row['status'] === '0' ? 'Active' : 'Inactive',
-            $row['presence'] === 'P' ? 'Present' : 'Absent']);
+function xlsx_xml_escape(string $value): string {
+    return htmlspecialchars($value, ENT_QUOTES | ENT_XML1, 'UTF-8');
+}
+
+function xlsx_column_letter(int $index): string {
+    $letter = '';
+    while ($index > 0) {
+        $index--;
+        $letter = chr(65 + ($index % 26)) . $letter;
+        $index = intdiv($index, 26);
     }
-    fclose($out); exit;
+    return $letter;
+}
+
+function xlsx_cell(int $row, int $column, string $value): string {
+    $ref = xlsx_column_letter($column) . $row;
+    return '<c r="' . $ref . '" t="inlineStr"><is><t>' . xlsx_xml_escape($value) . '</t></is></c>';
+}
+
+function xlsx_zip_build(array $entries): string {
+    $localData = '';
+    $centralData = '';
+    $offset = 0;
+
+    foreach ($entries as $entry) {
+        $name = str_replace('\\', '/', $entry['name']);
+        $data = $entry['data'];
+        $crc = crc32($data);
+        if ($crc < 0) {
+            $crc = $crc + 4294967296;
+        }
+        $compressedSize = strlen($data);
+        $uncompressedSize = $compressedSize;
+        $nameLength = strlen($name);
+
+        $localHeader = pack(
+            'VvvvvvVVVvv',
+            0x04034b50,
+            20,
+            0,
+            0,
+            0,
+            0,
+            $crc,
+            $compressedSize,
+            $uncompressedSize,
+            $nameLength,
+            0
+        ) . $name . $data;
+
+        $localData .= $localHeader;
+
+        $centralHeader = pack(
+            'VvvvvvvVVVvvvvvVV',
+            0x02014b50,
+            20,
+            20,
+            0,
+            0,
+            0,
+            0,
+            $crc,
+            $compressedSize,
+            $uncompressedSize,
+            $nameLength,
+            0,
+            0,
+            0,
+            0,
+            0,
+            $offset
+        ) . $name;
+
+        $centralData .= $centralHeader;
+        $offset += strlen($localHeader);
+    }
+
+    $entryCount = count($entries);
+    $centralSize = strlen($centralData);
+    $centralOffset = strlen($localData);
+
+    $endRecord = pack(
+        'VvvvvVVv',
+        0x06054b50,
+        0,
+        0,
+        $entryCount,
+        $entryCount,
+        $centralSize,
+        $centralOffset,
+        0
+    );
+
+    return $localData . $centralData . $endRecord;
+}
+
+if (isset($_GET['export']) && ($_GET['export'] === 'xlsx' || $_GET['export'] === 'csv')) {
+    while (ob_get_level()) ob_end_clean();
+    $headers = ['Sr.', 'BEL ID', 'Photo File', 'Name', 'Staff No', 'Support Field', 'Company', 'Joining Date', 'Left Date', 'Status', 'Presence'];
+    $rowIndex = 1;
+    $headerCells = [];
+    foreach ($headers as $columnIndex => $header) {
+        $headerCells[] = xlsx_cell($rowIndex, $columnIndex + 1, $header);
+    }
+    $rowsXml = ['<row r="1">' . implode('', $headerCells) . '</row>'];
+
+    $result = mysqli_query($link, "SELECT * FROM s_engg_login ORDER BY status ASC, engg_name ASC");
+    $rowIndex = 2;
+    while ($row = mysqli_fetch_assoc($result)) {
+        $photo = engineer_photo($row['enggid']);
+        $photoFile = $photo ? basename($photo) : '';
+        $values = [
+            $rowIndex - 1,
+            $row['enggid'],
+            $photoFile,
+            $row['engg_name'],
+            $row['engg_staff_no'],
+            $row['support_field'],
+            $row['company'],
+            $row['joining_date'],
+            $row['left_date'],
+            $row['status'] === '0' ? 'Active' : 'Inactive',
+            $row['presence'] === 'P' ? 'Present' : 'Absent',
+        ];
+        $cells = [];
+        foreach ($values as $columnIndex => $value) {
+            $cells[] = xlsx_cell($rowIndex, $columnIndex + 1, (string) $value);
+        }
+        $rowsXml[] = '<row r="' . $rowIndex . '">' . implode('', $cells) . '</row>';
+        $rowIndex++;
+    }
+
+    $sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        . '<sheetData>' . implode('', $rowsXml) . '</sheetData>'
+        . '</worksheet>';
+
+    $workbookXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        . '<sheets><sheet name="Engineer Directory" sheetId="1" r:id="rId1"/></sheets>'
+        . '</workbook>';
+
+    $stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        . '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        . '<fonts count="1"><font><sz val="11"/><color theme="1"/><name val="Calibri"/><family val="2"/></font></fonts>'
+        . '<fills count="1"><fill><patternFill patternType="none"/></fill></fills>'
+        . '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
+        . '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+        . '<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>'
+        . '</styleSheet>';
+
+    $contentTypesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        . '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        . '<Default Extension="xml" ContentType="application/xml"/>'
+        . '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        . '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        . '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+        . '</Types>';
+
+    $rootRelsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+        . '</Relationships>';
+
+    $workbookRelsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+        . '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+        . '</Relationships>';
+
+    $xlsxData = xlsx_zip_build([
+        ['name' => '[Content_Types].xml', 'data' => $contentTypesXml],
+        ['name' => '_rels/.rels', 'data' => $rootRelsXml],
+        ['name' => 'xl/workbook.xml', 'data' => $workbookXml],
+        ['name' => 'xl/_rels/workbook.xml.rels', 'data' => $workbookRelsXml],
+        ['name' => 'xl/worksheets/sheet1.xml', 'data' => $sheetXml],
+        ['name' => 'xl/styles.xml', 'data' => $stylesXml],
+    ]);
+
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename=BEL_Engineers_' . date('Ymd_His') . '.xlsx');
+    header('Content-Length: ' . strlen($xlsxData));
+    echo $xlsxData;
+    exit;
 }
 
 if (isset($_GET['export']) && $_GET['export'] === 'zip' && class_exists('ZipArchive')) {
@@ -53,8 +221,7 @@ $all    = mysqli_query($link, "SELECT * FROM s_engg_login ORDER BY status ASC, j
     </div>
     <div class="actions">
         <a href="Admin_Home.php?AdminTab=AddEngineer" class="btn btn-sm"><i class="fa-solid fa-user-plus"></i> Add Engineer</a>
-        <a href="Admin_Home.php?AdminTab=EngineerList&export=csv" class="btn btn-sm btn-success"><i class="fa-solid fa-file-csv"></i> Export CSV</a>
-        <a href="Admin_Home.php?AdminTab=EngineerList&export=zip" class="btn btn-sm btn-accent"><i class="fa-solid fa-file-zipper"></i> Export ZIP (with photos)</a>
+        <a href="Admin_Home.php?AdminTab=EngineerList&export=xlsx" class="btn btn-sm btn-success"><i class="fa-solid fa-file-excel"></i> Export XLSX</a>
     </div>
 </div>
 
